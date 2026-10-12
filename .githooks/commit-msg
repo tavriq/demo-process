@@ -1,0 +1,11 @@
+#!/bin/sh
+# Убирает из сообщения коммита трейлеры «Co-Authored-By: …Claude/Anthropic…» и «Generated with Claude Code».
+exec python3 -c '
+import re, sys
+p = sys.argv[1]
+pat = re.compile(r"^\s*co-authored-by:.*(claude|anthropic)|generated with \[?claude code", re.I)
+lines = [l for l in open(p, encoding="utf-8").read().splitlines() if not pat.search(l)]
+while lines and not lines[-1].strip():
+    lines.pop()
+open(p, "w", encoding="utf-8").write("\n".join(lines) + "\n")
+' "$1"

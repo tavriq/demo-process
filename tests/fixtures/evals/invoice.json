@@ -1,0 +1,22 @@
+{
+  "comment": "Рукописный ответ модели на evals invoice для подбора порога. Модель слила подпись и печать, добавила шаг «Получить товар».",
+  "truth": {"s1": "s1", "s2": "s3", "s3": "s4", "s4": "s5", "s6": "s6", "s7": "s7", "s8": "s8", "s9": "s9", "s10": "s10", "s11": "s11"},
+  "process": {
+    "title": "Оплата счёта поставщика",
+    "roles": [{"id": "r1", "name": "Бухгалтерия"}, {"id": "r2", "name": "Директор"}, {"id": "r3", "name": "Финдиректор"}, {"id": "r4", "name": "Водитель"}],
+    "steps": [
+      {"id": "s1", "kind": "start", "name": "Получение счёта", "role": "r1", "next": ["s2"], "quote": "Счёт приходит на почту бухгалтерии"},
+      {"id": "s2", "kind": "task", "name": "Привезти товар со счётом", "role": "r4", "next": ["s3"], "quote": "его привозит водитель вместе с товаром", "minutes": null, "wait_hours": null},
+      {"id": "s3", "kind": "task", "name": "Сверка счёта с накладной", "role": "r1", "next": ["s4"], "quote": "Бухгалтер сверяет счёт с заявкой и накладной", "minutes": 20, "wait_hours": null},
+      {"id": "s4", "kind": "decision", "name": "Всё сходится?", "role": "r1", "branches": [{"label": "да", "to": "s6"}, {"label": "нет", "to": "s5"}], "quote": "Если не сходится"},
+      {"id": "s5", "kind": "task", "name": "Запрос исправленного счёта у поставщика", "role": "r1", "next": ["s3"], "quote": "пишем поставщику и ждём исправленный счёт", "minutes": null, "wait_hours": 72},
+      {"id": "s6", "kind": "task", "name": "Подписание счёта директором", "role": "r2", "next": ["s7"], "quote": "несём на подпись директору", "minutes": null, "wait_hours": 48},
+      {"id": "s7", "kind": "task", "name": "Внесение счёта в 1С", "role": "r1", "next": ["s8"], "quote": "Подписанный счёт заводим в 1С", "minutes": null, "wait_hours": null},
+      {"id": "s8", "kind": "task", "name": "Утверждение реестра", "role": "r3", "next": ["s9"], "quote": "Финдиректор утверждает реестр", "minutes": null, "wait_hours": null},
+      {"id": "s9", "kind": "task", "name": "Оплата счёта", "role": "r1", "next": ["s10"], "quote": "платежи проводим по вторникам и пятницам", "minutes": null, "wait_hours": null},
+      {"id": "s10", "kind": "task", "name": "Отправка платёжки поставщику", "role": "r1", "next": ["s11"], "quote": "отправить поставщику платёжку", "minutes": null, "wait_hours": null},
+      {"id": "s11", "kind": "end", "name": "Счёт оплачен и подшит", "role": "r1", "next": [], "quote": "счёт подшить в папку за месяц"}
+    ],
+    "flags": {"unquoted": [], "numbers_dropped": [{"step": "s6", "field": "minutes", "value": 5}]}
+  }
+}

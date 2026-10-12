@@ -1,0 +1,11 @@
+{
+ "id": "dev-sales",
+ "question": {
+  "n": 1,
+  "max": 8,
+  "text": "Расскажите по шагам: с чего начинается работа с заявкой и чем заканчивается?",
+  "gap": "start_end"
+ },
+ "process": null,
+ "budget_left_rub": 12.42
+}

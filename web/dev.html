@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Процесс: как есть → как будет · стенд</title>
+<style>
+  /* Переменные сайта: светлая, тёмная по системе и тёмная по переключателю. */
+  :root {
+    --bg: #ffffff; --soft: #f4f4f1; --ink: #17181a; --muted: #6b6f76; --line: #e7e7e2; --line-2: #cfd0ca;
+    --red: #d23c36; --ok: #1d9a55;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; --mono: ui-monospace, Menlo, Consolas, monospace;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #121314; --soft: #1b1d1f; --ink: #ececea; --muted: #9a9ea6; --line: #2a2d30; --line-2: #3d4146;
+      --red: #ff6b62; --ok: #4cc584; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #121314; --soft: #1b1d1f; --ink: #ececea; --muted: #9a9ea6; --line: #2a2d30; --line-2: #3d4146;
+    --red: #ff6b62; --ok: #4cc584; color-scheme: dark;
+  }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans); }
+  main { max-width: 560px; margin: 0 auto; padding: 12px 16px 40px; }
+  .dev { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .dev h1 { font-size: 12px; font-weight: 600; margin: 0; letter-spacing: .04em; text-transform: uppercase; }
+  .dev button { font: inherit; color: inherit; background: var(--soft); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; cursor: pointer; }
+  .lead { font-size: 15px; line-height: 1.45; margin: 0 0 12px; }
+</style>
+<link rel="stylesheet" href="process.css">
+</head>
+<body>
+<main>
+  <div class="dev">
+    <h1>стенд · demo-process</h1>
+    <span><button type="button" id="theme">тема: авто</button> <button type="button" id="motion">движение: да</button></span>
+  </div>
+  <p class="lead">Ответьте на несколько вопросов голосом или текстом — схема процесса растёт после каждого ответа, а в конце код посчитает, где теряются часы и рубли и что автоматизировать первым.</p>
+  <div id="pr"></div>
+</main>
+<script src="engine.js"></script>
+<script src="process.js"></script>
+<script>
+  (function () {
+    var q = new URLSearchParams(location.search);
+    var themes = ['auto', 'light', 'dark'];
+    var names = { auto: 'авто', light: 'светлая', dark: 'тёмная' };
+    var t = themes.indexOf(q.get('theme')) >= 0 ? q.get('theme') : 'auto';
+    var tb = document.getElementById('theme');
+    function setTheme(x) {
+      t = x;
+      if (x === 'auto') document.documentElement.removeAttribute('data-theme');
+      else document.documentElement.setAttribute('data-theme', x);
+      tb.textContent = 'тема: ' + names[x];
+    }
+    setTheme(t);
+    tb.onclick = function () { setTheme(themes[(themes.indexOf(t) + 1) % 3]); };
+    var motion = q.get('motion') !== '0';
+    var mb = document.getElementById('motion');
+    mb.textContent = 'движение: ' + (motion ? 'да' : 'нет');
+    mb.onclick = function () { q.set('motion', motion ? '0' : '1'); location.search = q.toString(); };
+    // Примеры: рукописные фикстуры или ?src=recorded — записи с живой модели из ../app/recorded/
+    // (стенд тогда открыт статикой от корня репо: python3 -m http.server, /web/dev.html?src=recorded).
+    // Интервью по умолчанию идёт в заглушку ниже; ?stub=0 — в настоящий /api/process/ (python3 scripts/dev_server.py).
+    if (q.get('stub') !== '0') stubApi('/api/process/', q.has('speed') ? +q.get('speed') : 1);
+    window.pr = PrProcess.mount(document.getElementById('pr'), {
+      examplesBase: q.get('src') === 'recorded' ? '../app/recorded/' : 'fixtures/', api: '/api/process/', first: q.get('ex') || 'sales', motion: motion,
+      mail: q.get('mail') || 'hello@example.com',
+    });
+  })();
+
+  /* Заглушка API интервью по фикстурам fixtures/interview-*.json (контракт — docs/SPEC-analyst.md, «Контракт API»):
+     интервью проходится целиком без сервера. Ответы идут по порядку фикстуры, текст ответа — ваш; «не знаю» — без чисел.
+     Голос: запись меньше 1 КБ — stt_failed («не расслышал»), иначе — текст ответа из фикстуры. После «Хватит» отчёт
+     строится ~2,5 с и считается по тем числам, что вы дали. speed — множитель задержек (0 — без них). */
+  function stubApi(base, speed) {
+    var real = window.fetch.bind(window);
+    var fx = {};
+    var s = null;
+    function load(n) { return fx[n] || (fx[n] = real('fixtures/interview-' + n + '.json').then(function (r) { return r.json(); })); }
+    function reply(status, body) { return new Response(body == null ? null : JSON.stringify(body), { status: status, headers: { 'Content-Type': 'application/json' } }); }
+    function wait(ms) { return new Promise(function (r) { setTimeout(r, ms * speed); }); }
+    function clone(x) { return JSON.parse(JSON.stringify(x)); }
+    window.fetch = async function (url, init) {
+      var u = String(url);
+      if (u.indexOf(base) !== 0) return real(url, init);
+      var path = u.slice(base.length).split('?')[0];
+      var post = !!init && init.method === 'POST';
+      if (path === 'status') return reply(200, { live: true, budget_rub: 15, spent_rub: 2.58, run_worst_rub: 0.93, runs_running: 0 });
+      var start = await load('start'), answers = await load('answers'), done = await load('done'), errors = await load('errors');
+      if (path === 'interviews' && post) {
+        var b = JSON.parse(init.body || '{}');
+        if (!b.topic && !String(b.text || '').trim()) return reply(422, { code: 'bad_request', message: 'Нужна тема или фраза о процессе.' });
+        await wait(700);
+        s = { id: start.id, n: 0, understood: [], built: 0 };
+        return reply(201, start);
+      }
+      var m = /^interviews\/([\w-]+)(\/answers|\/finish)?$/.exec(path);
+      if (!m) return reply(404, errors.not_found);
+      var live = s && s.id === m[1];
+      if (m[2] && !live) return reply(404, errors.not_found);
+      if (m[2] === '/answers') {
+        var audio = init.body instanceof FormData;
+        var text = audio ? null : JSON.parse(init.body).text;
+        if (audio) { var f = init.body.get('audio'); await wait(900); if (!f || f.size < 1000) return reply(422, errors.stt_failed); }
+        await wait(1200);
+        var a = clone(answers[Math.min(s.n, answers.length - 1)]);
+        s.n++;
+        if (text != null) { a.answer_text = text; if (/не\s+знаю/i.test(text)) a.understood = []; }
+        if (audio) a.steps.unshift({ name: 'stt', ms: 1100, rub: 0.04 });
+        if (s.n >= answers.length) { a.question = null; a.done = true; a.steps = a.steps.filter(function (x) { return x.name !== 'ask'; }); }
+        s.understood = s.understood.concat(a.understood);
+        return reply(200, a);
+      }
+      if (m[2] === '/finish') { s.built = Date.now(); return reply(202, null); }
+      if (m[1] !== start.id) return reply(404, errors.not_found);
+      if (live && (!s.built || Date.now() - s.built < 2500 * speed)) return reply(200, { status: s.built ? 'building' : 'asking', transcript: [], process: null, improve: null, assumptions: null, answered: [], steps: [], totals: null });
+      var r = clone(done);
+      if (live && s.built) {
+        r.assumptions = PrEngine.applyAnswers(null, s.understood);
+        r.answered = s.understood.map(function (x) { return x.field; });
+        r.transcript = r.transcript.slice(0, s.n);
+      }
+      return reply(200, r);
+    };
+  }
+</script>
+</body>
+</html>

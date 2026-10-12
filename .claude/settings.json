@@ -1,0 +1,19 @@
+{
+  "attribution": {
+    "commit": "",
+    "pr": "",
+    "sessionUrl": false
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && git config user.name tavriq && git config user.email 197236376+tavriq@users.noreply.github.com && cp .githooks/commit-msg .git/hooks/commit-msg && chmod +x .git/hooks/commit-msg && if [ \"$CLAUDE_CODE_REMOTE\" = \"true\" ]; then cp .githooks/pre-push-cloud .git/hooks/pre-push && chmod +x .git/hooks/pre-push; fi"
+          }
+        ]
+      }
+    ]
+  }
+}

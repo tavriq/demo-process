@@ -1,0 +1,1756 @@
+[
+ {
+  "answer_text": "Заявка приходит с сайта на почту. Менеджер переносит её в таблицу — минут 5, потом звонит клиенту уточнить детали. Дальше кто-то из технарей считает смету, менеджер собирает КП и отправляет клиенту. Если клиент согласен, директор подписывает договор, если нет — менеджер помечает заявку как потерянную.",
+  "understood": [],
+  "process": {
+   "title": "Заявка с сайта → смета → КП → договор",
+   "roles": [
+    {
+     "id": "r1",
+     "name": "Менеджер",
+     "external": false
+    },
+    {
+     "id": "r2",
+     "name": "кто-то",
+     "external": false
+    },
+    {
+     "id": "r3",
+     "name": "Директор",
+     "external": false
+    },
+    {
+     "id": "r4",
+     "name": "Клиент",
+     "external": true
+    }
+   ],
+   "steps": [
+    {
+     "id": "s1",
+     "kind": "start",
+     "name": "Заявка пришла с сайта",
+     "role": "r4",
+     "next": [
+      "s2"
+     ],
+     "quote": "Заявка приходит с сайта на почту",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s2",
+     "kind": "task",
+     "name": "Перенести заявку в таблицу",
+     "role": "r1",
+     "next": [
+      "s3"
+     ],
+     "quote": "Менеджер переносит её в таблицу — минут 5",
+     "tool": "таблица",
+     "minutes": 5,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s3",
+     "kind": "task",
+     "name": "Позвонить клиенту, уточнить детали",
+     "role": "r1",
+     "next": [
+      "s4"
+     ],
+     "quote": "звонит клиенту уточнить детали",
+     "tool": "телефон",
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s4",
+     "kind": "task",
+     "name": "Посчитать смету",
+     "role": "r2",
+     "next": [
+      "s6"
+     ],
+     "quote": "кто-то из технарей считает смету",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s6",
+     "kind": "task",
+     "name": "Собрать КП и отправить клиенту",
+     "role": "r1",
+     "next": [
+      "s7"
+     ],
+     "quote": "менеджер собирает КП и отправляет клиенту",
+     "tool": "почта",
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s7",
+     "kind": "decision",
+     "name": "Клиент согласен?",
+     "role": "r1",
+     "next": [],
+     "quote": "Если клиент согласен",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": [
+      {
+       "label": "да",
+       "to": "s8"
+      },
+      {
+       "label": "нет",
+       "to": "s10"
+      }
+     ]
+    },
+    {
+     "id": "s8",
+     "kind": "task",
+     "name": "Подписать договор",
+     "role": "r3",
+     "next": [
+      "s9"
+     ],
+     "quote": "директор подписывает договор",
+     "tool": "бумага",
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s9",
+     "kind": "end",
+     "name": "Договор подписан",
+     "role": "r1",
+     "next": [],
+     "quote": "директор подписывает договор",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s10",
+     "kind": "task",
+     "name": "Пометить заявку потерянной",
+     "role": "r1",
+     "next": [
+      "s11"
+     ],
+     "quote": "менеджер помечает заявку как потерянную",
+     "tool": "таблица",
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s11",
+     "kind": "end",
+     "name": "Заявка потеряна",
+     "role": "r1",
+     "next": [],
+     "quote": "помечает заявку как потерянную",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    }
+   ],
+   "flags": {
+    "unquoted": [],
+    "numbers_dropped": []
+   }
+  },
+  "flags": {
+   "unquoted": [],
+   "numbers_dropped": []
+  },
+  "question": {
+   "n": 2,
+   "max": 8,
+   "text": "Сколько заявок приходит за месяц — примерно?",
+   "gap": "volume"
+  },
+  "done": false,
+  "steps": [
+   {
+    "name": "draft",
+    "ms": 2600,
+    "rub": 0.031
+   },
+   {
+    "name": "ask",
+    "ms": 800,
+    "rub": 0.006
+   }
+  ]
+ },
+ {
+  "answer_text": "Около 120 в месяц, весной больше.",
+  "understood": [
+   {
+    "field": "volume",
+    "value": 120,
+    "unit": "заявок/мес"
+   }
+  ],
+  "process": {
+   "title": "Заявка с сайта → смета → КП → договор",
+   "roles": [
+    {
+     "id": "r1",
+     "name": "Менеджер",
+     "external": false
+    },
+    {
+     "id": "r2",
+     "name": "кто-то",
+     "external": false
+    },
+    {
+     "id": "r3",
+     "name": "Директор",
+     "external": false
+    },
+    {
+     "id": "r4",
+     "name": "Клиент",
+     "external": true
+    }
+   ],
+   "steps": [
+    {
+     "id": "s1",
+     "kind": "start",
+     "name": "Заявка пришла с сайта",
+     "role": "r4",
+     "next": [
+      "s2"
+     ],
+     "quote": "Заявка приходит с сайта на почту",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s2",
+     "kind": "task",
+     "name": "Перенести заявку в таблицу",
+     "role": "r1",
+     "next": [
+      "s3"
+     ],
+     "quote": "Менеджер переносит её в таблицу — минут 5",
+     "tool": "таблица",
+     "minutes": 5,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s3",
+     "kind": "task",
+     "name": "Позвонить клиенту, уточнить детали",
+     "role": "r1",
+     "next": [
+      "s4"
+     ],
+     "quote": "звонит клиенту уточнить детали",
+     "tool": "телефон",
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s4",
+     "kind": "task",
+     "name": "Посчитать смету",
+     "role": "r2",
+     "next": [
+      "s6"
+     ],
+     "quote": "кто-то из технарей считает смету",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s6",
+     "kind": "task",
+     "name": "Собрать КП и отправить клиенту",
+     "role": "r1",
+     "next": [
+      "s7"
+     ],
+     "quote": "менеджер собирает КП и отправляет клиенту",
+     "tool": "почта",
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s7",
+     "kind": "decision",
+     "name": "Клиент согласен?",
+     "role": "r1",
+     "next": [],
+     "quote": "Если клиент согласен",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": [
+      {
+       "label": "да",
+       "to": "s8"
+      },
+      {
+       "label": "нет",
+       "to": "s10"
+      }
+     ]
+    },
+    {
+     "id": "s8",
+     "kind": "task",
+     "name": "Подписать договор",
+     "role": "r3",
+     "next": [
+      "s9"
+     ],
+     "quote": "директор подписывает договор",
+     "tool": "бумага",
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s9",
+     "kind": "end",
+     "name": "Договор подписан",
+     "role": "r1",
+     "next": [],
+     "quote": "директор подписывает договор",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s10",
+     "kind": "task",
+     "name": "Пометить заявку потерянной",
+     "role": "r1",
+     "next": [
+      "s11"
+     ],
+     "quote": "менеджер помечает заявку как потерянную",
+     "tool": "таблица",
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s11",
+     "kind": "end",
+     "name": "Заявка потеряна",
+     "role": "r1",
+     "next": [],
+     "quote": "помечает заявку как потерянную",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    }
+   ],
+   "flags": {
+    "unquoted": [],
+    "numbers_dropped": []
+   }
+  },
+  "flags": {
+   "unquoted": [],
+   "numbers_dropped": []
+  },
+  "question": {
+   "n": 3,
+   "max": 8,
+   "text": "Кто у вас считает смету?",
+   "gap": "s4.role"
+  },
+  "done": false,
+  "steps": [
+   {
+    "name": "draft",
+    "ms": 2100,
+    "rub": 0.028
+   },
+   {
+    "name": "ask",
+    "ms": 700,
+    "rub": 0.005
+   }
+  ]
+ },
+ {
+  "answer_text": "Инженер, он у нас один. Если данных не хватает, возвращает заявку менеджеру на доработку.",
+  "understood": [],
+  "process": {
+   "title": "Заявка с сайта → смета → КП → договор",
+   "roles": [
+    {
+     "id": "r1",
+     "name": "Менеджер",
+     "external": false
+    },
+    {
+     "id": "r2",
+     "name": "Инженер",
+     "external": false
+    },
+    {
+     "id": "r3",
+     "name": "Директор",
+     "external": false
+    },
+    {
+     "id": "r4",
+     "name": "Клиент",
+     "external": true
+    }
+   ],
+   "steps": [
+    {
+     "id": "s1",
+     "kind": "start",
+     "name": "Заявка пришла с сайта",
+     "role": "r4",
+     "next": [
+      "s2"
+     ],
+     "quote": "Заявка приходит с сайта на почту",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s2",
+     "kind": "task",
+     "name": "Перенести заявку в таблицу",
+     "role": "r1",
+     "next": [
+      "s3"
+     ],
+     "quote": "Менеджер переносит её в таблицу — минут 5",
+     "tool": "таблица",
+     "minutes": 5,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s3",
+     "kind": "task",
+     "name": "Позвонить клиенту, уточнить детали",
+     "role": "r1",
+     "next": [
+      "s4"
+     ],
+     "quote": "звонит клиенту уточнить детали",
+     "tool": "телефон",
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s4",
+     "kind": "task",
+     "name": "Посчитать смету",
+     "role": "r2",
+     "next": [
+      "s5"
+     ],
+     "quote": "кто-то из технарей считает смету",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s5",
+     "kind": "decision",
+     "name": "Хватает данных для сметы?",
+     "role": "r2",
+     "next": [],
+     "quote": "Если данных не хватает, возвращает заявку менеджеру на доработку",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": [
+      {
+       "label": "да",
+       "to": "s6"
+      },
+      {
+       "label": "на доработку",
+       "to": "s3"
+      }
+     ]
+    },
+    {
+     "id": "s6",
+     "kind": "task",
+     "name": "Собрать КП и отправить клиенту",
+     "role": "r1",
+     "next": [
+      "s7"
+     ],
+     "quote": "менеджер собирает КП и отправляет клиенту",
+     "tool": "почта",
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s7",
+     "kind": "decision",
+     "name": "Клиент согласен?",
+     "role": "r1",
+     "next": [],
+     "quote": "Если клиент согласен",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": [
+      {
+       "label": "да",
+       "to": "s8"
+      },
+      {
+       "label": "нет",
+       "to": "s10"
+      }
+     ]
+    },
+    {
+     "id": "s8",
+     "kind": "task",
+     "name": "Подписать договор",
+     "role": "r3",
+     "next": [
+      "s9"
+     ],
+     "quote": "директор подписывает договор",
+     "tool": "бумага",
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s9",
+     "kind": "end",
+     "name": "Договор подписан",
+     "role": "r1",
+     "next": [],
+     "quote": "директор подписывает договор",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s10",
+     "kind": "task",
+     "name": "Пометить заявку потерянной",
+     "role": "r1",
+     "next": [
+      "s11"
+     ],
+     "quote": "менеджер помечает заявку как потерянную",
+     "tool": "таблица",
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s11",
+     "kind": "end",
+     "name": "Заявка потеряна",
+     "role": "r1",
+     "next": [],
+     "quote": "помечает заявку как потерянную",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    }
+   ],
+   "flags": {
+    "unquoted": [],
+    "numbers_dropped": []
+   }
+  },
+  "flags": {
+   "unquoted": [],
+   "numbers_dropped": []
+  },
+  "question": {
+   "n": 4,
+   "max": 8,
+   "text": "Сколько стоит час работы сотрудника вместе с налогами — примерно?",
+   "gap": "rate"
+  },
+  "done": false,
+  "steps": [
+   {
+    "name": "draft",
+    "ms": 2900,
+    "rub": 0.034
+   },
+   {
+    "name": "ask",
+    "ms": 900,
+    "rub": 0.006
+   }
+  ]
+ },
+ {
+  "answer_text": "Примерно 900 рублей в час.",
+  "understood": [
+   {
+    "field": "rate",
+    "value": 900,
+    "unit": "₽/ч"
+   }
+  ],
+  "process": {
+   "title": "Заявка с сайта → смета → КП → договор",
+   "roles": [
+    {
+     "id": "r1",
+     "name": "Менеджер",
+     "external": false
+    },
+    {
+     "id": "r2",
+     "name": "Инженер",
+     "external": false
+    },
+    {
+     "id": "r3",
+     "name": "Директор",
+     "external": false
+    },
+    {
+     "id": "r4",
+     "name": "Клиент",
+     "external": true
+    }
+   ],
+   "steps": [
+    {
+     "id": "s1",
+     "kind": "start",
+     "name": "Заявка пришла с сайта",
+     "role": "r4",
+     "next": [
+      "s2"
+     ],
+     "quote": "Заявка приходит с сайта на почту",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s2",
+     "kind": "task",
+     "name": "Перенести заявку в таблицу",
+     "role": "r1",
+     "next": [
+      "s3"
+     ],
+     "quote": "Менеджер переносит её в таблицу — минут 5",
+     "tool": "таблица",
+     "minutes": 5,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s3",
+     "kind": "task",
+     "name": "Позвонить клиенту, уточнить детали",
+     "role": "r1",
+     "next": [
+      "s4"
+     ],
+     "quote": "звонит клиенту уточнить детали",
+     "tool": "телефон",
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s4",
+     "kind": "task",
+     "name": "Посчитать смету",
+     "role": "r2",
+     "next": [
+      "s5"
+     ],
+     "quote": "кто-то из технарей считает смету",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s5",
+     "kind": "decision",
+     "name": "Хватает данных для сметы?",
+     "role": "r2",
+     "next": [],
+     "quote": "Если данных не хватает, возвращает заявку менеджеру на доработку",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": [
+      {
+       "label": "да",
+       "to": "s6"
+      },
+      {
+       "label": "на доработку",
+       "to": "s3"
+      }
+     ]
+    },
+    {
+     "id": "s6",
+     "kind": "task",
+     "name": "Собрать КП и отправить клиенту",
+     "role": "r1",
+     "next": [
+      "s7"
+     ],
+     "quote": "менеджер собирает КП и отправляет клиенту",
+     "tool": "почта",
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s7",
+     "kind": "decision",
+     "name": "Клиент согласен?",
+     "role": "r1",
+     "next": [],
+     "quote": "Если клиент согласен",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": [
+      {
+       "label": "да",
+       "to": "s8"
+      },
+      {
+       "label": "нет",
+       "to": "s10"
+      }
+     ]
+    },
+    {
+     "id": "s8",
+     "kind": "task",
+     "name": "Подписать договор",
+     "role": "r3",
+     "next": [
+      "s9"
+     ],
+     "quote": "директор подписывает договор",
+     "tool": "бумага",
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s9",
+     "kind": "end",
+     "name": "Договор подписан",
+     "role": "r1",
+     "next": [],
+     "quote": "директор подписывает договор",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s10",
+     "kind": "task",
+     "name": "Пометить заявку потерянной",
+     "role": "r1",
+     "next": [
+      "s11"
+     ],
+     "quote": "менеджер помечает заявку как потерянную",
+     "tool": "таблица",
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s11",
+     "kind": "end",
+     "name": "Заявка потеряна",
+     "role": "r1",
+     "next": [],
+     "quote": "помечает заявку как потерянную",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    }
+   ],
+   "flags": {
+    "unquoted": [],
+    "numbers_dropped": []
+   }
+  },
+  "flags": {
+   "unquoted": [],
+   "numbers_dropped": []
+  },
+  "question": {
+   "n": 5,
+   "max": 8,
+   "text": "Сколько минут уходит на одну смету?",
+   "gap": "s4.minutes"
+  },
+  "done": false,
+  "steps": [
+   {
+    "name": "draft",
+    "ms": 2200,
+    "rub": 0.029
+   },
+   {
+    "name": "ask",
+    "ms": 700,
+    "rub": 0.005
+   }
+  ]
+ },
+ {
+  "answer_text": "Минут 40, если данных хватает.",
+  "understood": [
+   {
+    "field": "s4.minutes",
+    "value": 40,
+    "unit": "мин"
+   }
+  ],
+  "process": {
+   "title": "Заявка с сайта → смета → КП → договор",
+   "roles": [
+    {
+     "id": "r1",
+     "name": "Менеджер",
+     "external": false
+    },
+    {
+     "id": "r2",
+     "name": "Инженер",
+     "external": false
+    },
+    {
+     "id": "r3",
+     "name": "Директор",
+     "external": false
+    },
+    {
+     "id": "r4",
+     "name": "Клиент",
+     "external": true
+    }
+   ],
+   "steps": [
+    {
+     "id": "s1",
+     "kind": "start",
+     "name": "Заявка пришла с сайта",
+     "role": "r4",
+     "next": [
+      "s2"
+     ],
+     "quote": "Заявка приходит с сайта на почту",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s2",
+     "kind": "task",
+     "name": "Перенести заявку в таблицу",
+     "role": "r1",
+     "next": [
+      "s3"
+     ],
+     "quote": "Менеджер переносит её в таблицу — минут 5",
+     "tool": "таблица",
+     "minutes": 5,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s3",
+     "kind": "task",
+     "name": "Позвонить клиенту, уточнить детали",
+     "role": "r1",
+     "next": [
+      "s4"
+     ],
+     "quote": "звонит клиенту уточнить детали",
+     "tool": "телефон",
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s4",
+     "kind": "task",
+     "name": "Посчитать смету",
+     "role": "r2",
+     "next": [
+      "s5"
+     ],
+     "quote": "кто-то из технарей считает смету",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s5",
+     "kind": "decision",
+     "name": "Хватает данных для сметы?",
+     "role": "r2",
+     "next": [],
+     "quote": "Если данных не хватает, возвращает заявку менеджеру на доработку",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": [
+      {
+       "label": "да",
+       "to": "s6"
+      },
+      {
+       "label": "на доработку",
+       "to": "s3"
+      }
+     ]
+    },
+    {
+     "id": "s6",
+     "kind": "task",
+     "name": "Собрать КП и отправить клиенту",
+     "role": "r1",
+     "next": [
+      "s7"
+     ],
+     "quote": "менеджер собирает КП и отправляет клиенту",
+     "tool": "почта",
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s7",
+     "kind": "decision",
+     "name": "Клиент согласен?",
+     "role": "r1",
+     "next": [],
+     "quote": "Если клиент согласен",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": [
+      {
+       "label": "да",
+       "to": "s8"
+      },
+      {
+       "label": "нет",
+       "to": "s10"
+      }
+     ]
+    },
+    {
+     "id": "s8",
+     "kind": "task",
+     "name": "Подписать договор",
+     "role": "r3",
+     "next": [
+      "s9"
+     ],
+     "quote": "директор подписывает договор",
+     "tool": "бумага",
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s9",
+     "kind": "end",
+     "name": "Договор подписан",
+     "role": "r1",
+     "next": [],
+     "quote": "директор подписывает договор",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s10",
+     "kind": "task",
+     "name": "Пометить заявку потерянной",
+     "role": "r1",
+     "next": [
+      "s11"
+     ],
+     "quote": "менеджер помечает заявку как потерянную",
+     "tool": "таблица",
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s11",
+     "kind": "end",
+     "name": "Заявка потеряна",
+     "role": "r1",
+     "next": [],
+     "quote": "помечает заявку как потерянную",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    }
+   ],
+   "flags": {
+    "unquoted": [],
+    "numbers_dropped": []
+   }
+  },
+  "flags": {
+   "unquoted": [],
+   "numbers_dropped": []
+  },
+  "question": {
+   "n": 6,
+   "max": 8,
+   "text": "Сколько заявка ждёт, пока инженер возьмётся за смету?",
+   "gap": "s4.wait_hours"
+  },
+  "done": false,
+  "steps": [
+   {
+    "name": "draft",
+    "ms": 2300,
+    "rub": 0.03
+   },
+   {
+    "name": "ask",
+    "ms": 800,
+    "rub": 0.006
+   }
+  ]
+ },
+ {
+  "answer_text": "Обычно до следующего дня, часов 8.",
+  "understood": [
+   {
+    "field": "s4.wait_hours",
+    "value": 8,
+    "unit": "ч"
+   }
+  ],
+  "process": {
+   "title": "Заявка с сайта → смета → КП → договор",
+   "roles": [
+    {
+     "id": "r1",
+     "name": "Менеджер",
+     "external": false
+    },
+    {
+     "id": "r2",
+     "name": "Инженер",
+     "external": false
+    },
+    {
+     "id": "r3",
+     "name": "Директор",
+     "external": false
+    },
+    {
+     "id": "r4",
+     "name": "Клиент",
+     "external": true
+    }
+   ],
+   "steps": [
+    {
+     "id": "s1",
+     "kind": "start",
+     "name": "Заявка пришла с сайта",
+     "role": "r4",
+     "next": [
+      "s2"
+     ],
+     "quote": "Заявка приходит с сайта на почту",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s2",
+     "kind": "task",
+     "name": "Перенести заявку в таблицу",
+     "role": "r1",
+     "next": [
+      "s3"
+     ],
+     "quote": "Менеджер переносит её в таблицу — минут 5",
+     "tool": "таблица",
+     "minutes": 5,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s3",
+     "kind": "task",
+     "name": "Позвонить клиенту, уточнить детали",
+     "role": "r1",
+     "next": [
+      "s4"
+     ],
+     "quote": "звонит клиенту уточнить детали",
+     "tool": "телефон",
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s4",
+     "kind": "task",
+     "name": "Посчитать смету",
+     "role": "r2",
+     "next": [
+      "s5"
+     ],
+     "quote": "кто-то из технарей считает смету",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s5",
+     "kind": "decision",
+     "name": "Хватает данных для сметы?",
+     "role": "r2",
+     "next": [],
+     "quote": "Если данных не хватает, возвращает заявку менеджеру на доработку",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": [
+      {
+       "label": "да",
+       "to": "s6"
+      },
+      {
+       "label": "на доработку",
+       "to": "s3"
+      }
+     ]
+    },
+    {
+     "id": "s6",
+     "kind": "task",
+     "name": "Собрать КП и отправить клиенту",
+     "role": "r1",
+     "next": [
+      "s7"
+     ],
+     "quote": "менеджер собирает КП и отправляет клиенту",
+     "tool": "почта",
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s7",
+     "kind": "decision",
+     "name": "Клиент согласен?",
+     "role": "r1",
+     "next": [],
+     "quote": "Если клиент согласен",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": [
+      {
+       "label": "да",
+       "to": "s8"
+      },
+      {
+       "label": "нет",
+       "to": "s10"
+      }
+     ]
+    },
+    {
+     "id": "s8",
+     "kind": "task",
+     "name": "Подписать договор",
+     "role": "r3",
+     "next": [
+      "s9"
+     ],
+     "quote": "директор подписывает договор",
+     "tool": "бумага",
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s9",
+     "kind": "end",
+     "name": "Договор подписан",
+     "role": "r1",
+     "next": [],
+     "quote": "директор подписывает договор",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s10",
+     "kind": "task",
+     "name": "Пометить заявку потерянной",
+     "role": "r1",
+     "next": [
+      "s11"
+     ],
+     "quote": "менеджер помечает заявку как потерянную",
+     "tool": "таблица",
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s11",
+     "kind": "end",
+     "name": "Заявка потеряна",
+     "role": "r1",
+     "next": [],
+     "quote": "помечает заявку как потерянную",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    }
+   ],
+   "flags": {
+    "unquoted": [],
+    "numbers_dropped": []
+   }
+  },
+  "flags": {
+   "unquoted": [],
+   "numbers_dropped": []
+  },
+  "question": {
+   "n": 7,
+   "max": 8,
+   "text": "Сколько ждёт готовая смета, пока менеджер соберёт КП?",
+   "gap": "s6.wait_hours"
+  },
+  "done": false,
+  "steps": [
+   {
+    "name": "draft",
+    "ms": 2400,
+    "rub": 0.031
+   },
+   {
+    "name": "ask",
+    "ms": 800,
+    "rub": 0.006
+   }
+  ]
+ },
+ {
+  "answer_text": "Не знаю, по-разному.",
+  "understood": [],
+  "process": {
+   "title": "Заявка с сайта → смета → КП → договор",
+   "roles": [
+    {
+     "id": "r1",
+     "name": "Менеджер",
+     "external": false
+    },
+    {
+     "id": "r2",
+     "name": "Инженер",
+     "external": false
+    },
+    {
+     "id": "r3",
+     "name": "Директор",
+     "external": false
+    },
+    {
+     "id": "r4",
+     "name": "Клиент",
+     "external": true
+    }
+   ],
+   "steps": [
+    {
+     "id": "s1",
+     "kind": "start",
+     "name": "Заявка пришла с сайта",
+     "role": "r4",
+     "next": [
+      "s2"
+     ],
+     "quote": "Заявка приходит с сайта на почту",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s2",
+     "kind": "task",
+     "name": "Перенести заявку в таблицу",
+     "role": "r1",
+     "next": [
+      "s3"
+     ],
+     "quote": "Менеджер переносит её в таблицу — минут 5",
+     "tool": "таблица",
+     "minutes": 5,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s3",
+     "kind": "task",
+     "name": "Позвонить клиенту, уточнить детали",
+     "role": "r1",
+     "next": [
+      "s4"
+     ],
+     "quote": "звонит клиенту уточнить детали",
+     "tool": "телефон",
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s4",
+     "kind": "task",
+     "name": "Посчитать смету",
+     "role": "r2",
+     "next": [
+      "s5"
+     ],
+     "quote": "кто-то из технарей считает смету",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s5",
+     "kind": "decision",
+     "name": "Хватает данных для сметы?",
+     "role": "r2",
+     "next": [],
+     "quote": "Если данных не хватает, возвращает заявку менеджеру на доработку",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": [
+      {
+       "label": "да",
+       "to": "s6"
+      },
+      {
+       "label": "на доработку",
+       "to": "s3"
+      }
+     ]
+    },
+    {
+     "id": "s6",
+     "kind": "task",
+     "name": "Собрать КП и отправить клиенту",
+     "role": "r1",
+     "next": [
+      "s7"
+     ],
+     "quote": "менеджер собирает КП и отправляет клиенту",
+     "tool": "почта",
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s7",
+     "kind": "decision",
+     "name": "Клиент согласен?",
+     "role": "r1",
+     "next": [],
+     "quote": "Если клиент согласен",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": [
+      {
+       "label": "да",
+       "to": "s8"
+      },
+      {
+       "label": "нет",
+       "to": "s10"
+      }
+     ]
+    },
+    {
+     "id": "s8",
+     "kind": "task",
+     "name": "Подписать договор",
+     "role": "r3",
+     "next": [
+      "s9"
+     ],
+     "quote": "директор подписывает договор",
+     "tool": "бумага",
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s9",
+     "kind": "end",
+     "name": "Договор подписан",
+     "role": "r1",
+     "next": [],
+     "quote": "директор подписывает договор",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s10",
+     "kind": "task",
+     "name": "Пометить заявку потерянной",
+     "role": "r1",
+     "next": [
+      "s11"
+     ],
+     "quote": "менеджер помечает заявку как потерянную",
+     "tool": "таблица",
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s11",
+     "kind": "end",
+     "name": "Заявка потеряна",
+     "role": "r1",
+     "next": [],
+     "quote": "помечает заявку как потерянную",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    }
+   ],
+   "flags": {
+    "unquoted": [],
+    "numbers_dropped": []
+   }
+  },
+  "flags": {
+   "unquoted": [],
+   "numbers_dropped": []
+  },
+  "question": {
+   "n": 8,
+   "max": 8,
+   "text": "Сколько человек у вас считают сметы?",
+   "gap": "r2.people"
+  },
+  "done": false,
+  "steps": [
+   {
+    "name": "draft",
+    "ms": 2200,
+    "rub": 0.029
+   },
+   {
+    "name": "ask",
+    "ms": 700,
+    "rub": 0.005
+   }
+  ]
+ },
+ {
+  "answer_text": "Пока 1 инженер, второго ищем.",
+  "understood": [
+   {
+    "field": "r2.people",
+    "value": 1,
+    "unit": "чел."
+   }
+  ],
+  "process": {
+   "title": "Заявка с сайта → смета → КП → договор",
+   "roles": [
+    {
+     "id": "r1",
+     "name": "Менеджер",
+     "external": false
+    },
+    {
+     "id": "r2",
+     "name": "Инженер",
+     "external": false
+    },
+    {
+     "id": "r3",
+     "name": "Директор",
+     "external": false
+    },
+    {
+     "id": "r4",
+     "name": "Клиент",
+     "external": true
+    }
+   ],
+   "steps": [
+    {
+     "id": "s1",
+     "kind": "start",
+     "name": "Заявка пришла с сайта",
+     "role": "r4",
+     "next": [
+      "s2"
+     ],
+     "quote": "Заявка приходит с сайта на почту",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s2",
+     "kind": "task",
+     "name": "Перенести заявку в таблицу",
+     "role": "r1",
+     "next": [
+      "s3"
+     ],
+     "quote": "Менеджер переносит её в таблицу — минут 5",
+     "tool": "таблица",
+     "minutes": 5,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s3",
+     "kind": "task",
+     "name": "Позвонить клиенту, уточнить детали",
+     "role": "r1",
+     "next": [
+      "s4"
+     ],
+     "quote": "звонит клиенту уточнить детали",
+     "tool": "телефон",
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s4",
+     "kind": "task",
+     "name": "Посчитать смету",
+     "role": "r2",
+     "next": [
+      "s5"
+     ],
+     "quote": "кто-то из технарей считает смету",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s5",
+     "kind": "decision",
+     "name": "Хватает данных для сметы?",
+     "role": "r2",
+     "next": [],
+     "quote": "Если данных не хватает, возвращает заявку менеджеру на доработку",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": [
+      {
+       "label": "да",
+       "to": "s6"
+      },
+      {
+       "label": "на доработку",
+       "to": "s3"
+      }
+     ]
+    },
+    {
+     "id": "s6",
+     "kind": "task",
+     "name": "Собрать КП и отправить клиенту",
+     "role": "r1",
+     "next": [
+      "s7"
+     ],
+     "quote": "менеджер собирает КП и отправляет клиенту",
+     "tool": "почта",
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s7",
+     "kind": "decision",
+     "name": "Клиент согласен?",
+     "role": "r1",
+     "next": [],
+     "quote": "Если клиент согласен",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": [
+      {
+       "label": "да",
+       "to": "s8"
+      },
+      {
+       "label": "нет",
+       "to": "s10"
+      }
+     ]
+    },
+    {
+     "id": "s8",
+     "kind": "task",
+     "name": "Подписать договор",
+     "role": "r3",
+     "next": [
+      "s9"
+     ],
+     "quote": "директор подписывает договор",
+     "tool": "бумага",
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s9",
+     "kind": "end",
+     "name": "Договор подписан",
+     "role": "r1",
+     "next": [],
+     "quote": "директор подписывает договор",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s10",
+     "kind": "task",
+     "name": "Пометить заявку потерянной",
+     "role": "r1",
+     "next": [
+      "s11"
+     ],
+     "quote": "менеджер помечает заявку как потерянную",
+     "tool": "таблица",
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    },
+    {
+     "id": "s11",
+     "kind": "end",
+     "name": "Заявка потеряна",
+     "role": "r1",
+     "next": [],
+     "quote": "помечает заявку как потерянную",
+     "tool": null,
+     "minutes": null,
+     "wait_hours": null,
+     "branches": []
+    }
+   ],
+   "flags": {
+    "unquoted": [],
+    "numbers_dropped": []
+   }
+  },
+  "flags": {
+   "unquoted": [],
+   "numbers_dropped": []
+  },
+  "question": null,
+  "done": true,
+  "steps": [
+   {
+    "name": "draft",
+    "ms": 2500,
+    "rub": 0.033
+   }
+  ]
+ }
+]

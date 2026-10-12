@@ -1,0 +1,8 @@
+{
+  "name": "demo-process-web-tests",
+  "private": true,
+  "description": "Только для тестов страницы (node --test web/): проверка .bpmn через bpmn-moddle. В окно не попадает.",
+  "devDependencies": {
+    "bpmn-moddle": "10.3.1"
+  }
+}

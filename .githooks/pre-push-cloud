@@ -1,0 +1,10 @@
+#!/bin/sh
+# Облачные сессии пушат только в свои ветки feat/*: main и dev сливаются после приёмки.
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+  case "$remote_ref" in
+    refs/heads/main|refs/heads/dev)
+      echo "pre-push: в ${remote_ref#refs/heads/} из облака не пушим — создай ветку feat/<кусок> и пушь её" >&2
+      exit 1 ;;
+  esac
+done
+exit 0
