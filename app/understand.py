@@ -90,7 +90,7 @@ _BARE_TIME = re.compile(r"(?<!\w)(?<!в\s)(полчаса|полтора\s+ча�
 
 # «через два дня», «смета ждёт ещё день»: a wait before a step, not the time of the work (live 12.10: an
 # off-topic answer about waiting gave a manager 960 minutes per request)
-_DELAY = re.compile(r"(?<!\w)(?:через|спустя|жд[её]т|ждут|ожида\w*)(?:\s+(?:ещ[её]|обычно|примерно|около|где-то|почти))*\s*$",
+_DELAY = re.compile(r"(?<!\w)(?:через|спустя|жд[её]т|жд[её]м|ждут|ждать|ждали|ожида\w*)(?:\s+(?:ещ[её]|обычно|примерно|около|где-то|почти))*\s*$",
                     re.IGNORECASE)
 
 def _num(token: str) -> float | None:
@@ -291,14 +291,93 @@ def item(key: str, field: str, value: float) -> dict:
     return {"field": key, "value": int(value) if value == int(value) else value, "unit": UNITS[field]}
 
 
-def from_answer(answer: str, gap_key: str | None, gap_field: str | None) -> list[dict]:
+# A step's time said by its clause (замер 12.10: asked about one step, the owner gave another's time —
+# «сверка занимает 20 минут», «5 минут относятся к бухгалтеру», «а клиент думает неделю»).
+_SENTENCES = re.compile(r"[.!?;]+")
+_CLAUSES = re.compile(r",\s+(?:а|но)\s+")
+# «получаю за неделю до выхода, иногда за 1 день»: how early, neither the work nor a wait between steps
+_LEAD = re.compile(r"(?<!\w)за\s+(?:\S+\s+){0,2}до(?!\w)", re.IGNORECASE)
+# the time of the work, not of a wait: «тратит 10 минут», «уходит минут 10», «40 минут на подбор»
+_WORK_SAID = re.compile(r"(?<!\w)(?:трат|уход|занима|делае|делаю)\w*|(?:минут\w*|час\w*)\s+на\s+\w", re.IGNORECASE)
+_DELAY_SAID = re.compile(r"(?<!\w)(?:через|спустя|жд[её]т|жд[её]м|ждут|ждать|ждали|ожида\w*|дума\w*)", re.IGNORECASE)
+ABOUT_ASKED = "asked"
+
+
+def _marks(text: str) -> set[str]:
+    """Four-letter stems of the words of five letters and more: «сверка», «сверяет» -> «свер»."""
+    return {w[:4] for w in re.findall(r"[а-яa-z]{5,}", normalize(text))}
+
+
+def _about(clause: str, process: dict, step_id: str) -> str | None:
+    """Which step ``clause`` speaks about: ``ABOUT_ASKED``, another task step's id, or None when two
+    or more are named. The action (the first word of the step's name) decides before the role: «сверка
+    у бухгалтера» is about the check even when the asked step is the accountant's too."""
+    from app.gaps import is_system_role  # app.gaps imports this module
+
+    roles = {r.get("id"): r for r in process.get("roles") or [] if isinstance(r, dict)}
+    words = _marks(clause)
+    tasks = {}
+    for s in process.get("steps") or []:
+        if not isinstance(s, dict) or s.get("kind") != "task":
+            continue
+        role = roles.get(s.get("role")) or {}
+        if s.get("id") != step_id and (role.get("external") or is_system_role(role.get("name") or "")):
+            continue
+        first = re.findall(r"[а-яa-z]+", normalize(s.get("name") or ""))
+        tasks[s.get("id")] = ({first[0][:4]} if first and len(first[0]) >= 5 else set(),
+                              _marks(role.get("name") or ""), s.get("role"))
+    if step_id not in tasks:
+        return ABOUT_ASKED
+    action, role_marks, role_id = tasks[step_id]
+    by_action = [k for k, (a, _, _) in tasks.items() if a and a & words and (k == step_id or a - action)]
+    if step_id in by_action:
+        return ABOUT_ASKED
+    if by_action:
+        return by_action[0] if len(by_action) == 1 else None
+    named = {r for k, (_, m, r) in tasks.items() if m and m & words and (r == role_id or m - role_marks)}
+    if not named or role_id in named:
+        return ABOUT_ASKED
+    of_role = [k for k, (_, _, r) in tasks.items() if r in named]
+    return of_role[0] if len(of_role) == 1 else None
+
+
+def _timed_answer(answer: str, gap_key: str, field: str, process: dict) -> list[dict]:
+    """Minutes or a wait for the asked step, clause by clause: a clause about another step gives that
+    step's minutes (one named step) or nothing; days for minutes need «занимает», «уходит», «тратит»;
+    the time of the work is not a wait."""
+    step_id = gap_key.split(".")[0]
+    out = []
+    clauses = [c for sentence in _SENTENCES.split(normalize(answer)) if not _LEAD.search(sentence)
+               for c in _CLAUSES.split(sentence)]
+    for clause in clauses:
+        work, delay = _WORK_SAID.search(clause), _DELAY_SAID.search(clause)
+        if field == "wait_hours" and work and not delay:
+            continue
+        value = value_for(field, clause)
+        if value is None or (field == "minutes" and value >= DAY_H * 60 and not work):
+            continue
+        about = _about(clause, process, step_id)
+        if about == ABOUT_ASKED:
+            out.append(item(gap_key, field, value))
+            break
+        if about and field == "minutes" and all(u["field"] != f"{about}.minutes" for u in out):
+            out.append(item(f"{about}.minutes", "minutes", value))
+    return out
+
+
+def from_answer(answer: str, gap_key: str | None, gap_field: str | None, process: dict | None = None) -> list[dict]:
     """What the code understood: the asked field, and a volume or a rate said outright («120 заявок в
-    месяц», «700 рублей в час») whatever was asked."""
+    месяц», «700 рублей в час») whatever was asked. With the draft ``process``, minutes and waits of a
+    step go to the step the clause speaks about (``_timed_answer``)."""
     out, seen = [], set()
     if gap_key and gap_field:
-        value = value_for(gap_field, answer)
-        if value is not None:
-            out.append(item(gap_key, gap_field, value))
+        if gap_field in ("minutes", "wait_hours") and process and "." in gap_key:
+            out += _timed_answer(answer, gap_key, gap_field, process)
+        else:
+            value = value_for(gap_field, answer)
+            if value is not None:
+                out.append(item(gap_key, gap_field, value))
+        if any(u["field"] == gap_key for u in out):
             seen.add(gap_field)
     text = normalize(answer)
     if "volume" not in seen and not _PAY.search(text):

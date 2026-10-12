@@ -255,7 +255,7 @@ class Interviews:
             state["question"] = None
 
             field = q.get("field")
-            understood = understand.from_answer(answer_text, q["gap"] if field else None, field)
+            understood = understand.from_answer(answer_text, q["gap"] if field else None, field, state["draft"])
             self._names(state, understood)
             flags["dont_know"] = not understood and understand.dont_know(answer_text, field)
             calls = Calls(self.deps, state["hold_id"], label=interview_id[:6], within_hold=True)

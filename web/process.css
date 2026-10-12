@@ -10,8 +10,6 @@
 
 .pr *, .pr *::before, .pr *::after { box-sizing: border-box; }
 .pr [hidden] { display: none !important; }
-/* липкая шапка сайта (~57 px): прокрутка к интервью и к отчёту не прячет под неё первые строки */
-.pr-iv, .pr-h { scroll-margin-top: 72px; }
 .pr button, .pr input, .pr textarea { font: inherit; color: inherit; }
 .pr button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 

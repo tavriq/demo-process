@@ -294,7 +294,22 @@ def test_minutes_from_answers_only_on_work_steps():
     assert im.answered_minutes(process, {"minutes": "много"}) == {"s2": 10}
     assert im.answered_minutes(process, None) == {"s2": 10}
     counts = im.minutes_counts(process, {"minutes": {"s4": True}}, {"numbers": []})
-    assert counts == {"steps_total": 5, "minutes_answered": 1, "minutes_assumed": 2, "minutes_grounded": 0}
+    assert counts == {"steps_total": 5, "minutes_answered": 1, "minutes_assumed": 2, "minutes_grounded": 0,
+                      "minutes_on_step": 0}
+
+
+def test_minutes_on_their_own_step():
+    """20 is the reference's minutes of «Сверить счёт»: on the matched step it counts, on another it
+    is grounded (the number is in the text) but not on its step."""
+    ref = {"steps": [{"id": "r2", "kind": "task", "name": "Сверить счёт с заявкой и накладной", "role": "x"},
+                     {"id": "r5", "kind": "task", "name": "Подписать счёт у директора", "role": "y"}],
+           "numbers": [{"step": "r2", "field": "minutes", "values": [20], "unit": "мин", "quote": "минут 20"}]}
+    process = {"steps": [{"id": "s3", "kind": "task", "name": "Сверка счёта с заявкой и накладной", "role": "x"},
+                         {"id": "s5", "kind": "task", "name": "Подписание счёта директором", "role": "y"}]}
+    right = im.minutes_counts(process, {"minutes": {"s3": 20}}, ref)
+    wrong = im.minutes_counts(process, {"minutes": {"s5": 20}}, ref)
+    assert (right["minutes_grounded"], right["minutes_on_step"]) == (1, 1)
+    assert (wrong["minutes_grounded"], wrong["minutes_on_step"]) == (1, 0)
 
 
 def test_table_pools_the_last_line_per_process(serve, tmp_path):
@@ -305,7 +320,7 @@ def test_table_pools_the_last_line_per_process(serve, tmp_path):
     assert "| sales | 4 | 0 | 0 | 10 из 10 | 1 / 8 | 0.41 |  |" in table
     assert "| invoice | — | — | — | — | — | 0.00 | rate_limited: лимит / час |" in table
     assert "| всего | 4 | 0 | 0 | 100% [72%–100%] (10/10) | 1 / 8 | 0.41 | не дошли 1 из 2 |" in table
-    assert "Минуты из ответов — у 1 из 12 шагов (в v1 из текста — 5 из 54), есть в описании — 1 из 1." in table
+    assert "Минуты из ответов — у 1 из 12 шагов (в v1 из текста — 5 из 54), есть в описании — 1 из 1, у своего шага — 1 из 1." in table
 
     path = tmp_path / "run.jsonl"
     assert im.read_lines([path]) == lines

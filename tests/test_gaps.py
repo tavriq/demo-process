@@ -176,7 +176,9 @@ def test_value_for(field, text, value):
                                          ("volume", "20 минут"), ("people", "по-разному"), ("rate", "дорого"),
                                          # live 12.10: asked the minutes of a step, told about waiting
                                          ("minutes", "Замерщик выезжает обычно через два дня, потом смета ждёт ещё день у сметчика."),
-                                         ("minutes", "ждут около часа")])
+                                         ("minutes", "ждут около часа"),
+                                         # замер 12.10, invoice: подпись директора
+                                         ("minutes", "Подписи ждём обычно 2–3 дня, директор часто в разъездах.")])
 def test_no_value(field, text):
     assert understand.value_for(field, text) is None
 
