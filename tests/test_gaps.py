@@ -164,13 +164,19 @@ def test_every_template_is_short_and_has_no_digits():
     ("rate", "зарплата 50 тысяч, работают 8 часов в день", 298), ("rate", "50к в месяц", 298),
     # a range from one unit
     ("wait_hours", "день-два", 12), ("minutes", "час-два", 90), ("minutes", "час-полтора", 75),
+    # a wait said next to the work: only the work is minutes
+    ("minutes", "переношу минут десять, а клиент ждёт ответа через два дня", 10),
+    ("wait_hours", "замерщик выезжает обычно через два дня", 16),
 ])
 def test_value_for(field, text, value):
     assert understand.value_for(field, text) == value
 
 
 @pytest.mark.parametrize("field, text", [("volume", "не знаю"), ("minutes", "700 рублей в час"),
-                                         ("volume", "20 минут"), ("people", "по-разному"), ("rate", "дорого")])
+                                         ("volume", "20 минут"), ("people", "по-разному"), ("rate", "дорого"),
+                                         # live 12.10: asked the minutes of a step, told about waiting
+                                         ("minutes", "Замерщик выезжает обычно через два дня, потом смета ждёт ещё день у сметчика."),
+                                         ("minutes", "ждут около часа")])
 def test_no_value(field, text):
     assert understand.value_for(field, text) is None
 

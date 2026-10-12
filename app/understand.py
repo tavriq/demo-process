@@ -88,6 +88,10 @@ _COUNTED_BEFORE = re.compile(rf"{_NOUNS}[а-яё]*\s*$", re.IGNORECASE)
 _BARE_TIME = re.compile(r"(?<!\w)(?<!в\s)(полчаса|полтора\s+часа|час|минуту|день|сутки|неделю|полдня)(?!\w)",
                         re.IGNORECASE)
 
+# «через два дня», «смета ждёт ещё день»: a wait before a step, not the time of the work (live 12.10: an
+# off-topic answer about waiting gave a manager 960 minutes per request)
+_DELAY = re.compile(r"(?<!\w)(?:через|спустя|жд[её]т|ждут|ожида\w*)(?:\s+(?:ещ[её]|обычно|примерно|около|где-то|почти))*\s*$",
+                    re.IGNORECASE)
 
 def _num(token: str) -> float | None:
     token = token.strip().lower().replace("ё", "е")
@@ -244,9 +248,10 @@ def value_for(field: str, text: str) -> float | None:
     elif field in ("minutes", "wait_hours"):
         # a number with a time unit; else «полчаса», «час»; else the only plain number of the answer
         default = 1 if field == "minutes" else 60
-        timed = [q for q in qs if _is_time(q) and not _is_money(q)]
-        plain = [q for q in qs if not _is_time(q) and not _is_money(q) and not _counted(q)]
-        bare = _BARE_TIME.search(text)
+        work = (lambda start: not _DELAY.search(text[:start])) if field == "minutes" else (lambda start: True)
+        timed = [q for q in qs if _is_time(q) and not _is_money(q) and work(q["start"])]
+        plain = [q for q in qs if not _is_time(q) and not _is_money(q) and not _counted(q) and work(q["start"])]
+        bare = next((m for m in _BARE_TIME.finditer(text) if work(m.start())), None)
         minutes = None
         if timed:
             minutes = _duration(timed[0], default)
