@@ -119,7 +119,7 @@ class Calls:
         the gateway gave no usage)."""
         conf = self.s.step(step)
         self.check_time()
-        worst = messages_worst_rub(conf.model, messages, conf.max_tokens)
+        worst = messages_worst_rub(conf.model, messages, conf.max_tokens, self.s)
         reservation = None
         if self.store is not None:
             hold = (self.hold_id, worst) if self.hold_id is not None else None

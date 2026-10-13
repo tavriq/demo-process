@@ -1,11 +1,13 @@
-"""Settings from the environment. The key is never logged or returned."""
+"""Settings from the environment. The keys are never logged or returned."""
 
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from ipaddress import IPv4Network, IPv6Network, ip_network
 from pathlib import Path
+
+from app.pricing import ANTHROPIC_PRICES_USD_PER_1M
 
 # docs/SPEC.md, «Конвейер»: Haiku on both steps; the eval compares it with gemini-3.1-flash-lite.
 DEFAULT_MODEL = "anthropic/claude-haiku-5-5"
@@ -13,6 +15,10 @@ DEFAULT_MODEL = "anthropic/claude-haiku-5-5"
 # recognition as in demo-voice.
 DEFAULT_DRAFT_MODEL = "gemini/gemini-3.1-flash-lite"
 DEFAULT_STT_MODEL = "openai/gpt-4o-transcribe"
+# docs/SPEC.md, «Шлюзы»: anthropic/* models may go to Anthropic directly. No default mapping: the
+# ids are checked on a live key with GET /v1/models first.
+DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com"
+ANTHROPIC_PREFIX = "anthropic/"
 
 # Model steps (docs/SPEC.md, «Конвейер»; docs/SPEC-analyst.md): env prefix, max_tokens, timeout in s.
 # draft: the whole Process of up to 15 steps plus the numbers of the last answer; ask: one question
@@ -28,6 +34,19 @@ STEPS = {
 def parse_trusted_proxies(raw: str) -> tuple[IPv4Network | IPv6Network, ...]:
     """TRUSTED_PROXY: comma-separated IPs or CIDR ranges. Empty = trust nobody."""
     return tuple(ip_network(p.strip(), strict=False) for p in raw.split(",") if p.strip())
+
+
+def parse_anthropic_models(raw: str) -> tuple[tuple[str, str], ...]:
+    """ANTHROPIC_MODELS: comma-separated ``anthropic/<model>=<id at Anthropic>``. Empty = none."""
+    pairs = []
+    for item in (p.strip() for p in raw.split(",")):
+        if not item:
+            continue
+        model, _, model_id = (s.strip() for s in item.partition("="))
+        if not model.startswith(ANTHROPIC_PREFIX) or not model_id:
+            raise ValueError(f"ANTHROPIC_MODELS: «{item}» is not anthropic/<model>=<id at Anthropic>")
+        pairs.append((model, model_id))
+    return tuple(pairs)
 
 
 @dataclass(frozen=True)
@@ -73,10 +92,35 @@ class Settings:
     interview_idle_s: float = 600
     interviews_per_hour: int = 3
     max_concurrent_interviews: int = 2
+    # Anthropic directly (docs/SPEC.md, «Шлюзы»).
+    anthropic_api_key: str = field(default="", repr=False)
+    anthropic_base_url: str = DEFAULT_ANTHROPIC_BASE_URL
+    anthropic_models: tuple[tuple[str, str], ...] = ()
+    usd_rub: float = 0.0
 
     @property
     def live(self) -> bool:
         return bool(self.api_key and self.base_url)
+
+    @property
+    def anthropic_on(self) -> bool:
+        """The direct route is on: the key, the mapping and the rate are all set."""
+        return bool(self.anthropic_api_key and self.anthropic_models and self.usd_rub > 0)
+
+    def anthropic_id(self, model: str) -> str | None:
+        """The model's id at Anthropic when its calls go there directly: the route is on, the model
+        is mapped and the id has a price (app.pricing). None: the model goes through Timeweb."""
+        if not self.anthropic_on:
+            return None
+        model_id = dict(self.anthropic_models).get(model)
+        return model_id if model_id in ANTHROPIC_PRICES_USD_PER_1M else None
+
+    def routes(self) -> dict[str, str]:
+        """The route of every model in use: "anthropic" or "timeweb". Recognition is always Timeweb."""
+        out = {model: "anthropic" if self.anthropic_id(model) else "timeweb"
+               for name, model in self.models().items() if name != "stt"}
+        out.setdefault(self.stt_model, "timeweb")
+        return out
 
     def step(self, name: str) -> StepConf:
         """Model, max_tokens and timeout of a model step (a key of STEPS)."""
@@ -121,5 +165,9 @@ class Settings:
             interview_idle_s=float(env.get("INTERVIEW_IDLE_S", "600")),
             interviews_per_hour=int(env.get("INTERVIEWS_PER_HOUR", "3")),
             max_concurrent_interviews=int(env.get("MAX_CONCURRENT_INTERVIEWS", "2")),
+            anthropic_api_key=env.get("ANTHROPIC_API_KEY", "").strip(),
+            anthropic_base_url=env.get("ANTHROPIC_BASE_URL", "").strip() or DEFAULT_ANTHROPIC_BASE_URL,
+            anthropic_models=parse_anthropic_models(env.get("ANTHROPIC_MODELS", "")),
+            usd_rub=float(env.get("USD_RUB", "").strip() or 0),
             **per_step,
         )

@@ -18,9 +18,17 @@ services:
       # LLM_API_KEY, LLM_BASE_URL: the server's shared gateway file, never printed.
       - path: ../llm.env
         required: false
+      # ANTHROPIC_API_KEY: anthropic/* models go to Anthropic directly, Timeweb is the fallback
+      # (docs/SPEC.md, «Шлюзы»). Never printed. Without the file the route is off.
+      - path: ../anthropic.env
+        required: false
     environment:
       EXTRACT_MODEL: "anthropic/claude-haiku-5-5"
       IMPROVE_MODEL: "anthropic/claude-haiku-5-5"
+      # Anthropic directly (docs/SPEC.md, «Шлюзы»): the id checked with GET /v1/models on 13.10;
+      # USD_RUB is the CBR rate of 13.10 (83.92) with ~5 % on top, so the costs are not understated.
+      ANTHROPIC_MODELS: "anthropic/claude-haiku-5-5=claude-haiku-5-5"
+      USD_RUB: "88"
       # The interview (docs/SPEC-analyst.md): drafts and questions, speech to text.
       DRAFT_MODEL: "gemini/gemini-3.1-flash-lite"
       STT_MODEL: "openai/gpt-4o-transcribe"

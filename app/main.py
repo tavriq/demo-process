@@ -27,7 +27,7 @@ from pydantic import BaseModel, ConfigDict
 from starlette.datastructures import MutableHeaders
 
 from app.config import Settings
-from app.gateway import ChatClient, Gateway
+from app.gateway import ChatClient, Router
 from app.interview import Interviews
 from app.interview_api import INTERVIEW_ID, add_interview_routes, body_limit
 from app.netutil import client_ip, rate_limit_key
@@ -181,7 +181,7 @@ def create_app(settings: Settings | None = None, client: ChatClient | None = Non
         log.warning("marked %s interviews left from a previous process as error", stale)
     store.release_holds()  # one worker (Dockerfile): no live run or interview holds anything yet
     if client is None and settings.live:
-        client = Gateway(settings.base_url, settings.api_key)
+        client = Router.from_settings(settings)  # Timeweb, and Anthropic directly when that is on
     deps = Deps(client, store, settings)
     runner = ThreadPoolExecutor(max_workers=max(1, settings.max_concurrent_runs), thread_name_prefix="run")
     slots = Slots(settings.max_concurrent_runs)
@@ -193,7 +193,7 @@ def create_app(settings: Settings | None = None, client: ChatClient | None = Non
 
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     app.add_middleware(Guard, audio_body=body_limit(settings))
-    app.state.store, app.state.slots = store, slots  # for tests and scripts
+    app.state.store, app.state.slots, app.state.client = store, slots, client  # for tests and scripts
 
     @app.exception_handler(RequestValidationError)
     async def bad_request(_request: Request, _exc: RequestValidationError):
@@ -217,11 +217,14 @@ def create_app(settings: Settings | None = None, client: ChatClient | None = Non
         store.maybe_purge()
         spent = store.spent_today()
         interviews.expire_idle()
-        return {"live": client is not None and spent + worst <= settings.daily_budget_rub,
+        body = {"live": client is not None and spent + worst <= settings.daily_budget_rub,
                 "budget_rub": settings.daily_budget_rub, "spent_rub": round(spent, 2),
                 "run_worst_rub": round(worst, 2), "runs_running": slots.busy,
                 "interview_worst_rub": round(interview_worst, 2), "interviews_running": store.active_interviews(),
                 "models": settings.models()}
+        if settings.anthropic_on:  # docs/SPEC.md, «Шлюзы»: with the route off the answer is as before
+            body["routes"] = settings.routes()
+        return body
 
     @app.post(f"{PREFIX}/runs")
     def create_run(req: RunRequest, request: Request):

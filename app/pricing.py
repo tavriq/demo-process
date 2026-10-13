@@ -18,6 +18,11 @@ interview never spends the recognition part, but the formula holds it anyway.
 Worst case of a call: the prompt at 2 characters per token (Russian text is never denser, so
 the input is overestimated) plus ``max_tokens`` of output. A run starts only if the rest of the
 day covers both steps with a retry each (docs/SPEC.md, «Деньги, лимиты, данные»).
+
+A model that may go to Anthropic directly (docs/SPEC.md, «Шлюзы»; app.config.Settings.anthropic_id)
+costs what the route it took costs: Timeweb in rubles, Anthropic in dollars × USD_RUB. A call that
+timed out at Anthropic may be billed there and is then answered by Timeweb, so its worst case is
+both routes together; such a fallback is charged Anthropic's worst on top (app.gateway.Router).
 """
 
 from __future__ import annotations
@@ -38,6 +43,21 @@ PRICES_RUB_PER_1M: dict[str, tuple[float, float]] = {
 }
 # Unknown model: the most expensive known input and output prices, so budgets stay on the safe side.
 FALLBACK = (max(p[0] for p in PRICES_RUB_PER_1M.values()), max(p[1] for p in PRICES_RUB_PER_1M.values()))
+
+# Anthropic Messages API directly: dollars per 1M tokens by the model's id at Anthropic.
+# https://platform.claude.com/docs/en/about-claude/pricing, «Model pricing», 12.10.2026.
+# Haiku 5.5: the price for prompts up to 100,000 tokens (above it $0.50 / $2.50); a prompt here is
+# a few thousand tokens. Opus 5.5, Sonnet 5.5 and Fable 5.1 answer a forced tool_choice with HTTP 400
+# (the same page, «Tool use pricing», has no forced row for them), so they have no price here: a
+# model without a price goes through Timeweb.
+ANTHROPIC_PRICES_USD_PER_1M: dict[str, tuple[float, float]] = {
+    "claude-haiku-5-5": (0.10, 0.50),
+    "claude-haiku-4-5": (1.00, 5.00),
+}
+# What the forced tool adds to the prompt: its system prompt (406 tokens on Haiku 5.5, 588 on
+# Haiku 4.5; the same page, «Tool use pricing») and the schema itself (app.schema, up to 1 500
+# characters).
+ANTHROPIC_TOOL_TOKENS = 1_500
 
 # Recognition (demo-voice probe 08.10): 10 audio tokens per second, text out ~4 per second, 8 assumed;
 # the request and the short prompt are ~40 text tokens.
@@ -64,17 +84,35 @@ def call_cost_rub(model: str, tokens_in: int, tokens_out: int) -> float:
     return (tokens_in * pin + tokens_out * pout) / 1_000_000
 
 
+def anthropic_cost_rub(model_id: str, tokens_in: int, tokens_out: int, usd_rub: float) -> float:
+    """A call that went to Anthropic directly; ``model_id`` is the id at Anthropic."""
+    pin, pout = ANTHROPIC_PRICES_USD_PER_1M[model_id]
+    return (tokens_in * pin + tokens_out * pout) * usd_rub / 1_000_000
+
+
 def prompt_chars(messages: list[dict]) -> int:
     return sum(len(m.get("content") or "") for m in messages if isinstance(m.get("content"), str))
 
 
-def call_worst_rub(model: str, chars: int, max_tokens: int) -> float:
-    """The most a call can cost: ``chars`` of prompt and ``max_tokens`` of answer."""
-    return call_cost_rub(model, math.ceil(chars / CHARS_PER_TOKEN_IN), max_tokens)
+def anthropic_worst_rub(model_id: str, chars: int, max_tokens: int, usd_rub: float) -> float:
+    """The most a call to Anthropic directly can cost, the forced tool included."""
+    return anthropic_cost_rub(model_id, math.ceil(chars / CHARS_PER_TOKEN_IN) + ANTHROPIC_TOOL_TOKENS,
+                              max_tokens, usd_rub)
 
 
-def messages_worst_rub(model: str, messages: list[dict], max_tokens: int) -> float:
-    return call_worst_rub(model, prompt_chars(messages), max_tokens)
+def call_worst_rub(model: str, chars: int, max_tokens: int, settings=None) -> float:
+    """The most a call can cost: ``chars`` of prompt and ``max_tokens`` of answer. With
+    ``settings`` and the model routed to Anthropic, both routes: a timeout there may be billed
+    and the call is then repeated through Timeweb."""
+    worst = call_cost_rub(model, math.ceil(chars / CHARS_PER_TOKEN_IN), max_tokens)
+    model_id = settings.anthropic_id(model) if settings is not None else None
+    if model_id:
+        worst += anthropic_worst_rub(model_id, chars, max_tokens, settings.usd_rub)
+    return worst
+
+
+def messages_worst_rub(model: str, messages: list[dict], max_tokens: int, settings=None) -> float:
+    return call_worst_rub(model, prompt_chars(messages), max_tokens, settings)
 
 
 def step_input_chars(settings, step: str, retry: bool = False) -> int:
@@ -92,7 +130,8 @@ def step_worst_rub(settings, step: str, retry: bool = False) -> float:
     from app.prompts import SYSTEM  # prompts import this module; imported late
 
     conf = settings.step(step)
-    return call_worst_rub(conf.model, len(SYSTEM[step]) + step_input_chars(settings, step, retry), conf.max_tokens)
+    return call_worst_rub(conf.model, len(SYSTEM[step]) + step_input_chars(settings, step, retry), conf.max_tokens,
+                          settings)
 
 
 def run_worst_rub(settings) -> float:
@@ -155,7 +194,7 @@ def interview_step_worst_rub(settings, step: str, retry: bool = False) -> float:
 
     conf = settings.step(step)
     return call_worst_rub(conf.model, len(INTERVIEW_SYSTEM[step]) + interview_input_chars(settings, step, retry),
-                          conf.max_tokens)
+                          conf.max_tokens, settings)
 
 
 def interview_turn_worst_rub(settings) -> float:

@@ -52,6 +52,8 @@ curl -s 127.0.0.1:18106/api/process/status
 
 Ключ и адрес шлюза Timeweb AI — переменные `LLM_API_KEY` и `LLM_BASE_URL` (в compose — файл `../llm.env`). Модели — `EXTRACT_MODEL`, `IMPROVE_MODEL`, `DRAFT_MODEL`, `STT_MODEL`. Контракт API — в SPEC.
 
+Модели `anthropic/*` могут ходить напрямую в Anthropic с откатом на Timeweb: `ANTHROPIC_API_KEY`, `ANTHROPIC_MODELS` и `USD_RUB` в файле `../anthropic.env`, подробности — в SPEC, раздел «Шлюзы».
+
 Тесты: `pytest -q` и `node --test web/`. Замер — живые вызовы с потолком в рублях: `python3 -m evals.run --max-rub 2` — схема по описанию, `python3 -m evals.interview.run --max-rub 15 --dry-run` — интервью с владельцем-симулятором (с `--dry-run` только худший случай, без вызовов).
 
 ## Лимиты и данные
