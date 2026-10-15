@@ -9,7 +9,8 @@ app.interview_api is the HTTP layer over it.
 A turn: the answer (text, or audio -> STT_MODEL; the audio is only in memory) -> contacts masked ->
 numbers for the asked gap by code (app.understand) -> the draft over the whole transcript, checked
 like v1 but lenient (app.checks.check_draft) -> numbers of the draft model that hold up -> the next
-gap -> its wording without digits. «Не знаю» closes the gap without a draft call. A draft or a
+gap -> its wording without digits. «Не знаю» closes the gap without a draft call; so does «ничего,
+сразу передают» to «what happens between X and Y» (app.understand.nothing_between). A draft or a
 wording that fails (off format, the gateway, the budget, the time) never fails the turn: the last
 draft stays, the question falls back to the gap's template. Recognition that fails or hears nothing
 is ``stt_failed``: the question is not used up.
@@ -195,7 +196,8 @@ class Interviews:
         state = {"id": interview_id, "status": "asking", "created": self.store.clock(), "topic": topic,
                  "phrase": phrase or None, "question": None, "transcript": [], "asked": [], "draft": None,
                  "process": None, "improve": None, "assumptions": understand.apply({}, []), "answered": [],
-                 "names": {}, "carried_lost": [], "steps": [], "totals": None, "hold_id": hold_id, "error": None}
+                 "between": [], "names": {}, "carried_lost": [], "steps": [], "totals": None, "hold_id": hold_id,
+                 "error": None}
         self.store.create_interview(interview_id, state)
         return state
 
@@ -258,8 +260,10 @@ class Interviews:
             understood = understand.from_answer(answer_text, q["gap"] if field else None, field, state["draft"])
             self._names(state, understood)
             flags["dont_know"] = not understood and understand.dont_know(answer_text, field)
+            nothing = (not understood and not flags["dont_know"] and gaps.is_between(q["gap"])
+                       and understand.nothing_between(answer_text, self._pair_names(state, q["gap"])))
             calls = Calls(self.deps, state["hold_id"], label=interview_id[:6], within_hold=True)
-            if not flags["dont_know"]:
+            if not flags["dont_know"] and not nothing:
                 draft, answers, flags["draft"] = self._draft(calls, state)
                 if draft is not None:
                     state["draft"] = state["process"] = draft
@@ -281,8 +285,8 @@ class Interviews:
             self.store.save_interview(interview_id, state)
         finally:
             lock.release()
-        log.info("interview=%s answer=%s audio=%s understood=%s draft=%s done=%s", interview_id[:6], n,
-                 audio is not None, len(understood), flags["draft"], done)
+        log.info("interview=%s answer=%s audio=%s understood=%s nothing_between=%s draft=%s done=%s",
+                 interview_id[:6], n, audio is not None, len(understood), nothing, flags["draft"], done)
         return {"answer_text": answer_text, "understood": understood, "process": state["process"], "flags": flags,
                 "question": public_question(state["question"]), "done": done,
                 "steps": [{"name": r["name"], "ms": r["ms"], "rub": r["rub"]} for r in rows]}
@@ -353,7 +357,8 @@ class Interviews:
     def _next_question(self, calls: Calls, state: dict) -> dict:
         """The next gap and its wording into ``state["question"]`` (None — nothing to ask)."""
         flags = {"question_template": False, "question_digits": 0}
-        gap = gaps.next_gap(state["draft"], state["assumptions"], state["asked"], state["topic"], state["phrase"])
+        gap = gaps.next_gap(state["draft"], state["assumptions"], state["asked"], state["topic"], state["phrase"],
+                            state.get("between"))
         if gap is None:
             state["question"] = None
             return flags
@@ -371,9 +376,19 @@ class Interviews:
             log.info("interview=%s ask failed: %s", state["id"][:6], e.code)
         text, flags["question_digits"], flags["question_template"] = worded or gaps.clean_question("", gap.template)
         state["asked"].append(gap.key)
+        if gap.kind == "between":
+            state.setdefault("between", []).append(gaps.between_record(gap, state["draft"]))
         state["question"] = {"n": len(state["transcript"]) + 1, "max": self.s.max_questions, "text": text,
                              "gap": gap.key, "field": gap.field}
         return flags
+
+    @staticmethod
+    def _pair_names(state: dict, key: str) -> list[str]:
+        """The two steps a «between» question named and the roles of the draft: the words an answer
+        that nothing is between them may use."""
+        asked = next((r for r in state.get("between") or [] if r.get("key") == key), {})
+        roles = [r["name"] for r in (state["draft"] or {}).get("roles") or []]
+        return [asked.get("from") or "", asked.get("to") or "", *roles]
 
     def _names(self, state: dict, understood: list[dict]) -> None:
         """The name of the step or role a number is about, as the draft calls it now."""

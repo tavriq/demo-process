@@ -1,5 +1,6 @@
 """What the code takes from an answer (docs/SPEC-analyst.md, «Кто что решает»): numbers for the
-assumptions, «не знаю», and the draft model's ``answers`` checked against the answer.
+assumptions, «не знаю», «ничего, сразу передают» to a «between» question, and the draft model's
+``answers`` checked against the answer.
 
 Numbers come by regular expressions with units, as in app.checks: digits («120», «1,5», «60 000»),
 words («сто двадцать», «полторы тысячи», «двое»), ranges («10–15», «от двух до трёх» -> the middle).
@@ -284,6 +285,29 @@ def dont_know(text: str, field: str | None) -> bool:
     if len(normalize(text)) > DONT_KNOW_CHARS or not _DONT_KNOW.search(normalize(text)):
         return False
     return field is None or value_for(field, text) is None
+
+
+# «Ничего, сразу передаём сметчику» to «what happens between X and Y»: no step between them. Any word
+# but these, the steps' and the roles' may be a step: such an answer goes to the draft.
+_NOTHING = re.compile(r"(?<!\w)(?:ничего|никаких|нет|сразу|напрямую|тут\s+же)(?!\w)", re.IGNORECASE)
+_NOTHING_WORDS = re.compile(
+    r"^(?:ничего|никаких|никак\w*|нет|не|сразу|напрямую|тут|там|же|так|все|просто|особ\w*|происход\w*|бывает|"
+    r"между|ними|этими|шаг\w*|друг\w*|лишн\w*|больше|дальше|следующ\w*|переда\w*|отда\w*|отправл\w*|"
+    r"пересыла\w*|уход\w*|идет|попада\w*|переход\w*|нас|мы|он|она|они|его|ее|их|это|у|в|на|к|и|а|с|по|от|до|за|"
+    r"из|да)$")
+NOTHING_CHARS = 80
+
+
+def nothing_between(text: str, names=()) -> bool:
+    """A short answer that nothing happens between the two steps of a «between» question: «ничего»,
+    «сразу», «нет» and only words of handing over and of ``names`` (the two steps, the roles)."""
+    t = normalize(text)
+    if len(t) > NOTHING_CHARS or not _NOTHING.search(t):
+        return False
+    named = " ".join(names)
+    words, stems = set(re.findall(r"[а-яa-z]+", normalize(named))), _marks(named)
+    return all(_NOTHING_WORDS.match(w) or w in words or (len(w) >= 4 and w[:4] in stems)
+               for w in re.findall(r"[а-яa-z]+", t))
 
 
 def item(key: str, field: str, value: float) -> dict:

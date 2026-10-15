@@ -186,16 +186,25 @@ def test_the_whole_interview_to_the_report(settings):
         bodies.append(r.json())
         if r.json()["question"]:
             gaps_asked.append(r.json()["question"]["gap"])
-    # the code's choice, by priority: start/end, volume, branches of s7, rate, then minutes by share of hours
-    assert gaps_asked == ["start_end", "volume", "s7.branches", "rate", "s6.minutes", "s2.minutes", "s3.minutes",
-                          "s5.minutes"]
+    # the code's choice, by priority: start/end, volume, branches of s7, two handoffs between roles (what is
+    # between the steps), rate, then minutes by share of hours
+    assert gaps_asked == ["start_end", "volume", "s7.branches", "between.1", "between.2", "rate", "s3.minutes",
+                          "s6.minutes"]
+    asks = [gw.user(i) for i, step in enumerate(gw.steps()) if step == "ask" and "между шагами" in gw.user(i)]
+    assert len(asks) == 2 and "«Собрать и отправить КП» и «Что ответил клиент?»" in asks[0]
+    assert "«Уточнить объём у клиента» и «Посчитать смету»" in asks[1]
     assert [b["question"]["n"] for b in bodies[:-1]] == [2, 3, 4, 5, 6, 7, 8]
     assert bodies[-1]["done"] is True and bodies[-1]["question"] is None
     assert bodies[1]["understood"] == [{"field": "volume", "value": 120, "unit": "заявок/мес"}]
-    assert bodies[3]["understood"] == [{"field": "rate", "value": 417, "unit": "₽/ч"}]  # 70 000 a month / 168
+    # the answers about what is between: no number, the draft gets the new steps between the two
+    assert bodies[3]["understood"] == [] and bodies[3]["flags"]["draft"] == "ok"
+    links = {s["id"]: s.get("next") or [b["to"] for b in s.get("branches") or []]
+             for s in bodies[4]["process"]["steps"]}
+    assert (links["s6"], links["s13"], links["s3"], links["s4"]) == (["s13"], ["s7"], ["s4"], ["s5", "s3"])
+    assert bodies[5]["understood"] == [{"field": "rate", "value": 417, "unit": "₽/ч"}]  # 70 000 a month / 168
     assert bodies[6]["flags"]["dont_know"] is True and bodies[6]["flags"]["draft"] == "skipped"
     # the draft model's number that holds up: the waiting before s5
-    assert bodies[7]["understood"] == [{"field": "s5.minutes", "value": 40, "unit": "мин"},
+    assert bodies[7]["understood"] == [{"field": "s6.minutes", "value": 30, "unit": "мин"},
                                        {"field": "s5.wait_hours", "value": 16, "unit": "ч"}]
 
     state = wait_built(client, interview_id)
@@ -203,10 +212,11 @@ def test_the_whole_interview_to_the_report(settings):
     assert set(state) == GET_KEYS and state["status"] == "done" and state["error"] is None
     assert len(state["transcript"]) == 8 and all(set(t) == {"q", "a"} for t in state["transcript"])
     assert state["process"]["flags"] == {"unquoted": [], "numbers_dropped": []}
+    assert "Позвонить клиенту по КП" in [s["name"] for s in state["process"]["steps"]]
     assert state["improve"]["summary"] and [c["step"] for c in state["improve"]["changes"]] == ["s2", "s4", "s9", "s10"]
-    assert state["assumptions"] == {"perMonth": 120, "rate": 417, "people": {}, "minutes": {"s6": 30, "s2": 10, "s5": 40},
+    assert state["assumptions"] == {"perMonth": 120, "rate": 417, "people": {}, "minutes": {"s6": 30},
                                     "wait_hours": {"s5": 16}}
-    assert state["answered"] == ["volume", "rate", "s6.minutes", "s2.minutes", "s5.minutes", "s5.wait_hours"]
+    assert state["answered"] == ["volume", "rate", "s6.minutes", "s5.wait_hours"]
     names = [s["name"] for s in state["steps"]]
     assert names[-2:] == ["extract", "improve"] and state["steps"][-1]["n"] is None
     assert state["totals"]["rub"] == pytest.approx(sum(s["rub"] for s in state["steps"]), abs=1e-3)
@@ -236,6 +246,61 @@ def test_dont_know_closes_the_gap_and_keeps_the_assumption(settings):
     state = client.get(f"{URL}/{interview_id}").json()
     assert "perMonth" not in state["assumptions"] and state["answered"] == []
     assert gw.steps() == ["ask", "ask", "ask"]
+
+
+BETWEEN_Q = "Что происходит между «Собрать и отправить КП» и ответом клиента — нет ли там ещё шагов?"
+CALL = F["answers"][3]  # «Через пару дней менеджер звонит клиенту…»: a step between s6 and s7
+
+
+def to_between(settings, *replies):
+    """An interview at its first «between» question: the first answer tells the whole process and the
+    volume, so the draft has all its branches."""
+    client, gw = make(settings, [q(FIRST), dumps(F["drafts"][2]), q(BETWEEN_Q), *replies])
+    interview_id = start(client)["id"]
+    body = say(client, interview_id, F["answers"][0] + " " + F["answers"][1]).json()
+    assert body["understood"] == [{"field": "volume", "value": 120, "unit": "заявок/мес"}]
+    assert body["question"] == {"n": 2, "max": 8, "text": BETWEEN_Q, "gap": "between.1"}
+    assert "«Собрать и отправить КП» и «Что ответил клиент?»" in gw.user(2)
+    return client, gw, interview_id
+
+
+def test_nothing_between_closes_the_gap_without_a_draft(settings):
+    client, gw, interview_id = to_between(settings, q(), dumps(F["drafts"][2]), q())
+    body = say(client, interview_id, "Ничего не происходит, КП сразу уходит клиенту.").json()
+    assert body["understood"] == [] and body["flags"]["dont_know"] is False and body["flags"]["draft"] == "skipped"
+    assert body["question"]["gap"] == "between.2" and gw.steps() == ["ask", "draft", "ask", "ask"]
+    assert "«Уточнить объём у клиента» и «Посчитать смету»" in gw.user(3)
+    # an answer that may hold a step goes to the draft
+    body = say(client, interview_id, "Нет, ещё менеджер проверяет объём по фото.").json()
+    assert body["flags"]["draft"] == "ok" and gw.steps()[-2:] == ["draft", "ask"]
+    assert body["question"]["gap"] == "rate"  # two «between» an interview
+    state = client.get(f"{URL}/{interview_id}").json()
+    assert state["answered"] == ["volume"]  # a «between» key never goes there
+
+
+def test_steps_from_a_between_answer_reach_the_final(settings):
+    client, gw, interview_id = to_between(settings, dumps(F["drafts"][3]), q(), q(), dumps(F["extract"]),
+                                          dumps(F["improve"]))
+    body = say(client, interview_id, CALL).json()
+    draft_call = gw.user(3)
+    assert f"Вопрос 2: {BETWEEN_Q}\nОтвет: {CALL}" in draft_call
+    assert "s6 task «Собрать и отправить КП» (r1) → s7" in draft_call  # the ids the draft keeps
+    steps = {s["id"]: s for s in body["process"]["steps"]}
+    assert steps["s6"]["next"] == ["s13"] and steps["s13"]["next"] == ["s7"]
+    # s13 -> s7 is the pair just asked, split by its answer: the next handoff instead
+    assert body["question"]["gap"] == "between.2" and "«Уточнить объём у клиента» и «Посчитать смету»" in gw.user(4)
+    assert say(client, interview_id, "Не знаю").json()["flags"]["draft"] == "skipped"
+    assert client.post(f"{URL}/{interview_id}/finish").status_code == 202
+    state = wait_built(client, interview_id)
+    assert state["status"] == "done" and gw.steps()[-2:] == ["extract", "improve"]
+    extract = gw.calls[-2]["messages"][-1]["content"]
+    assert CALL in extract and "s13 task «Позвонить клиенту по КП» (r1) → s7" in extract
+    final = {s["id"]: s for s in state["process"]["steps"]}
+    assert final["s13"]["name"] == "Позвонить клиенту по КП" and final["s13"]["role"] == "r1"
+    assert final["s13"]["quote"] == "менеджер звонит клиенту и спрашивает, посмотрел ли он КП"
+    assert "s13" not in state["process"]["flags"]["unquoted"]
+    assert final["s6"]["next"] == ["s13"] and final["s13"]["next"] == ["s7"]
+    assert state["answered"] == ["volume"]
 
 
 def test_the_limit_of_questions(settings):

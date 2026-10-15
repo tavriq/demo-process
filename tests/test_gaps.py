@@ -42,7 +42,7 @@ def test_a_draft_without_its_start_or_end(drop, wording):
 
 
 def test_priorities_on_one_draft():
-    """1 start/end, 2 volume, 3 role, 4 branches, 5 rate, 6 minutes, 7 waiting, 8 people."""
+    """1 start/end, 2 volume, 3 role, 4 branches, 5 between, 6 rate, 7 minutes, 8 waiting, 9 people."""
     process = sales_process()
     process["steps"] = [s for s in process["steps"] if s["id"] != "s11"]  # no «Договор у клиента»
     process["steps"] = [s for s in process["steps"] if s["id"] != "s12"]  # and no end at all
@@ -53,7 +53,7 @@ def test_priorities_on_one_draft():
     for g in gaps.find_gaps(process, {}):
         if g.kind not in kinds:
             kinds.append(g.kind)
-    assert kinds == ["start_end", "volume", "role", "branches", "rate", "minutes", "wait", "people"]
+    assert kinds == ["start_end", "volume", "role", "branches", "between", "rate", "minutes", "wait", "people"]
     found = gaps.find_gaps(process, {})
     assert keys(found, "role") == ["s8.role"] and keys(found, "branches") == ["s4.branches"]
 
@@ -105,8 +105,9 @@ def test_next_gap_never_asks_twice():
     process = sales_process()
     first = gaps.next_gap(process, {}, [])
     assert first.key == "volume"
-    assert gaps.next_gap(process, {}, ["volume"]).key == "rate"
-    assert gaps.next_gap(process, {}, ["volume", "rate"]).key == "s3.minutes"
+    assert gaps.next_gap(process, {}, ["volume"]).key == "between.1"
+    assert gaps.next_gap(process, {}, ["volume", "between.1", "between.2"]).key == "rate"
+    assert gaps.next_gap(process, {}, ["volume", "between.1", "between.2", "rate"]).key == "s3.minutes"
     everything = keys(gaps.find_gaps(process, {}))
     assert gaps.next_gap(process, {}, everything) is None
 
@@ -304,3 +305,120 @@ def test_a_draft_checks_quotes_and_numbers_as_v1():
     draft, _ = check_draft(draft_of(steps), TEXT)
     assert draft["flags"] == {"unquoted": ["s1"], "numbers_dropped": [{"step": "s3", "field": "minutes", "value": 25}]}
     assert step_of(draft, "s3")["minutes"] is None
+
+
+# ---------- what is between two steps (замер 13.10: 8 questions of 8 went to numbers) ----------
+
+def between_keys(found):
+    return [(g.key, g.step, g.to) for g in found if g.kind == "between"]
+
+
+def renumbered(process, shift=1):
+    """The same draft after a redraw that moved every id: the model's ids are not the steps'."""
+    ids = {s["id"]: f"s{int(s['id'][1:]) + shift}" for s in process["steps"]}
+    out = copy.deepcopy(process)
+    for s in out["steps"]:
+        s["id"] = ids[s["id"]]
+        s["next"] = [ids[t] for t in s.get("next") or []]
+        for b in s.get("branches") or []:
+            b["to"] = ids[b["to"]]
+    return out
+
+
+def asked(process, *found):
+    return [gaps.between_record(g, process) for g in found]
+
+
+def test_between_asks_about_a_handoff_between_roles():
+    """Only an edge between two work steps where the role changes: not the start, not the end, not the
+    same role."""
+    draft = {"title": "Ч", "roles": [{"id": "r1", "name": "Менеджер", "external": False},
+                                     {"id": "r2", "name": "Сметчик", "external": False}],
+             "steps": [{"id": "s1", "kind": "start", "name": "Пришла заявка", "role": "r1", "next": ["s2"]},
+                       {"id": "s2", "kind": "task", "name": "Принять заявку", "role": "r1", "next": ["s3"]},
+                       {"id": "s3", "kind": "task", "name": "Записать в журнал", "role": "r1", "next": ["s4"]},
+                       {"id": "s4", "kind": "task", "name": "Посчитать смету", "role": "r2", "next": ["s5"]},
+                       {"id": "s5", "kind": "end", "name": "Смета готова", "role": "r2", "next": []}]}
+    found = gaps.find_gaps(draft, {"perMonth": 100, "rate": 700})
+    assert between_keys(found) == [("between.1", "s3", "s4")]
+    g = next(g for g in found if g.kind == "between")
+    assert g.field is None and g.pair == ("Записать в журнал", "Посчитать смету")
+    assert g.template == "Что происходит между «Записать в журнал» и «Посчитать смету» — нет ли там ещё шагов?"
+    assert "от «Менеджер» к «Сметчик»" in g.about
+    # the same role all along: nothing to ask
+    draft["steps"][3]["role"] = "r1"
+    assert between_keys(gaps.find_gaps(draft, {})) == []
+
+
+def test_between_by_passes_of_the_edge_then_by_the_order_of_steps(monkeypatch):
+    """Hand count on sales (visits × share, the loops take 0.2): s6 -> s7 1.25 goes first though it comes
+    later; s4 -> s5 and s5 -> s6 1.0 each, s7 -> s9 and s9 -> s10 0.5, s7 -> s8 and s8 -> s6 0.25: a tie
+    by the order of the steps. s2 -> s3 is the same role, s7 -> s12 ends."""
+    monkeypatch.setattr(gaps, "MAX_BETWEEN", 10)
+    assert between_keys(gaps.find_gaps(sales_process(), {})) == [
+        ("between.1", "s6", "s7"), ("between.2", "s4", "s5"), ("between.3", "s5", "s6"), ("between.4", "s7", "s9"),
+        ("between.5", "s9", "s10"), ("between.6", "s7", "s8"), ("between.7", "s8", "s6")]
+
+
+def test_between_at_most_two_an_interview():
+    process = sales_process()
+    found = gaps.find_gaps(process, {})
+    assert gaps.MAX_BETWEEN == 2 and between_keys(found) == [("between.1", "s6", "s7"), ("between.2", "s4", "s5")]
+    first, second = [g for g in found if g.kind == "between"]
+    assert between_keys(gaps.find_gaps(process, {}, between=asked(process, first))) == [("between.2", "s4", "s5")]
+    both = asked(process, first, second)
+    assert between_keys(gaps.find_gaps(process, {}, between=both)) == []
+    assert between_keys(gaps.find_gaps(renumbered(process), {}, between=both)) == []
+    assert gaps.next_gap(process, {"perMonth": 100}, ["between.1", "between.2"], between=both).key == "rate"
+
+
+def test_between_is_not_asked_again_when_the_ids_move():
+    """The pair is kept by name: after a redraw that moved the ids the same steps are not asked again,
+    and other steps under the ids asked before are."""
+    process = sales_process()
+    first = next(g for g in gaps.find_gaps(process, {}) if g.kind == "between")
+    record = asked(process, first)
+    moved = renumbered(process)  # «Собрать и отправить КП» -> «Что ответил клиент?» is s7 -> s8 now
+    assert between_keys(gaps.find_gaps(moved, {}, between=record)) == [("between.2", "s5", "s6")]
+    assert gaps.next_gap(moved, {"perMonth": 100}, ["volume", "between.1"], between=record).key == "between.2"
+    other = sales_process()
+    step_of(other, "s6")["name"], step_of(other, "s7")["name"] = "Выставить счёт", "Пришла ли оплата?"
+    assert between_keys(gaps.find_gaps(other, {}, between=record))[0] == ("between.2", "s6", "s7")
+
+
+def test_between_does_not_ask_about_the_pair_its_answer_split():
+    """The answer put «Позвонить клиенту по КП» between the two: s13 -> s7 is the same handoff, asked."""
+    process = sales_process()
+    first = next(g for g in gaps.find_gaps(process, {}) if g.kind == "between")
+    record = asked(process, first)
+    step_of(process, "s6")["next"] = ["s13"]
+    process["steps"].insert(6, {"id": "s13", "kind": "task", "name": "Позвонить клиенту по КП", "role": "r1",
+                                "next": ["s7"], "branches": [], "quote": None, "tool": None, "minutes": None,
+                                "wait_hours": None})
+    assert between_keys(gaps.find_gaps(process, {}))[0] == ("between.1", "s13", "s7")  # not asked yet: it is new
+    assert between_keys(gaps.find_gaps(process, {}, between=record)) == [("between.2", "s4", "s5")]
+
+
+def test_between_question_has_no_digits_and_fits():
+    process = sales_process()
+    step_of(process, "s6")["name"] = "Собрать КП на 3 позиции и отправить клиенту по почте с приложениями к нему"
+    step_of(process, "s7")["name"] = "Что ответил клиент на 2-е письмо с коммерческим предложением и приложениями?"
+    g = next(g for g in gaps.find_gaps(process, {}) if g.kind == "between")
+    question, _, used = gaps.clean_question("", g.template)
+    assert used and question == g.template and question.endswith("— нет ли там ещё шагов?")
+    assert gaps.digits_in(question) == 0 and len(question) <= gaps.MAX_QUESTION_CHARS
+    assert gaps.digits_in(g.about) == 0 and len(g.about) <= 400  # app.pricing.GAP_CHARS
+
+
+@pytest.mark.parametrize("text, nothing", [
+    ("Ничего, сразу передаём сметчику.", True), ("Ничего не происходит", True), ("Нет, сразу", True),
+    ("Никаких шагов нет, менеджер сразу отправляет сметчику", True), ("Нет, больше ничего, всё сразу", True),
+    ("Ничего, КП сразу уходит клиенту", True),
+    # a step, or maybe one: the draft decides
+    ("Нет, ещё менеджер проверяет данные", False), ("Ничего особенного, менеджер звонит клиенту", False),
+    ("Сначала звонит, потом сразу передаёт", False), ("Сразу, но иногда руководитель смотрит смету", False),
+    ("Да", False), ("не знаю", False), ("Ничего, сразу передаём. " * 5, False),
+])
+def test_nothing_between(text, nothing):
+    names = ["Уточнить объём у клиента", "Посчитать смету", "Собрать и отправить КП", "Менеджер", "Сметчик", "Клиент"]
+    assert understand.nothing_between(text, names) is nothing

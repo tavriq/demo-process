@@ -129,3 +129,9 @@ def test_interview_settings_from_env():
     s = Settings.from_env({"DRAFT_MODEL": "openai/gpt-4.1-mini", "STT_MODEL": "openai/gpt-4o-mini-transcribe"})
     assert s.step("ask").model == "openai/gpt-4.1-mini" and s.stt_model == "openai/gpt-4o-mini-transcribe"
     assert Settings.from_env({"DRAFT_MODEL": "a/b", "ASK_MODEL": "c/d"}).step("ask").model == "c/d"
+
+
+def test_the_between_gap_keeps_the_interview_worst_case():
+    """The draft prompt learnt where the steps of a «between» answer go (docs/SPEC-analyst.md) without
+    growing: the worst case of an interview stays 12,70 ₽, as «Деньги и лимиты» holds it."""
+    assert round(interview_worst_rub(Settings.from_env({})), 2) <= 12.70

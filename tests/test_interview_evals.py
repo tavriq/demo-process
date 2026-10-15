@@ -474,3 +474,19 @@ def test_missing_interview_worst_is_a_clear_error(monkeypatch):
 def test_unknown_ids_are_refused():
     with pytest.raises(SystemExit, match="нет таких id: nope"):
         irun.select(load_processes(), "sales,nope")
+
+
+def test_between_questions_and_reference_edges_in_the_table():
+    transcript = [{"gap": "start_end", "q": "С чего всё начинается?", "a": "…"},
+                  {"gap": "between.1", "q": "Что происходит между «А» и «Б» — нет ли там ещё шагов?", "a": "ничего"},
+                  {"gap": "between.2", "q": "Что происходит между «В» и «Г» — нет ли там ещё шагов?", "a": None}]
+    assert im.between_questions(transcript) == 2 and im.interview(transcript, {}, {})["between"] == 2
+    line = {"id": "sales", "ok": True, "rub": 0.5, "transcript": transcript, **im.question_counts(transcript),
+            "between": 2, "score": {"steps_found": 9, "steps_ref": 10, "edges_kept": 8, "edges_ref": 12}}
+    old = {"id": "invoice", "ok": True, "rub": 0.25, "transcript": transcript[:2], "questions": 2,
+           "score": {"steps_found": 9, "steps_ref": 10, "edges_kept": 9, "edges_ref": 11}}  # a run before «between»
+    table = im.table([line, im.refresh(old)])
+    assert table.splitlines()[0].endswith("| ошибка | «между» | связи эталона |")
+    assert "| sales | 3 | 0 | 0 | 9 из 10 | — | 0.50 |  | 2 | 8 из 12 |" in table
+    assert "| invoice | 2 | — | — | 9 из 10 | — | 0.25 |  | 1 | 9 из 11 |" in table
+    assert f"| не дошли 0 из 2 | 3 | {im.fmt(17, 23)} |" in table

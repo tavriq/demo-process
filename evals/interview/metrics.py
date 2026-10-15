@@ -8,6 +8,10 @@ Per interview:
 - questions asked — every question the server sent, the one left unanswered at the limit included;
 - repeats — a question whose ``gap`` was asked before or whose text (normalized as in score.py) was;
 - questions with digits — a digit anywhere in the text, «1С» aside (a product name, as in app/checks.py);
+- «between» questions — «what happens between X and Y» (gap ``between.<n>``, docs/SPEC-analyst.md): at
+  most 2 an interview, they look for the steps a handoff hides;
+- reference edges kept — ``edges_kept`` of ``evals/score.py``: a step that was not asked about breaks
+  the edges around it too;
 - minutes from the answers against assumptions — of the work steps (task, decision: web/engine.js
   gives the others no minutes) of the final ``process``, those whose minutes came from the answers:
   on the step itself (the interview's text is its transcript, so a number left there by the check is
@@ -35,6 +39,7 @@ from evals.score import grounded, match_steps, normalize, score  # noqa: E402
 from evals.summarize import fmt  # noqa: E402
 
 V1_MINUTES = (5, 54)  # docs/SPEC-analyst.md: time from the text in 5 of 54 steps
+BETWEEN = "between."  # the key of a «between» gap (docs/SPEC-analyst.md, «Контракт API»)
 
 _DIGIT = re.compile(r"\d")
 _1C = re.compile(r"(?<!\w)1[сСcC](?!\w)")
@@ -64,6 +69,11 @@ def question_counts(transcript: list[dict]) -> dict:
         "repeats": repeats,
         "questions_with_digits": sum(1 for t in transcript if has_digits(t.get("q"))),
     }
+
+
+def between_questions(transcript: list[dict]) -> int:
+    """How many questions asked what happens between two steps."""
+    return sum(1 for t in transcript if str(t.get("gap") or "").startswith(BETWEEN))
 
 
 def answered_minutes(process: dict, assumptions: dict | None) -> dict[str, float]:
@@ -103,6 +113,7 @@ def minutes_counts(process: dict, assumptions: dict | None, ref: dict) -> dict:
 def interview(transcript: list[dict], final: dict, ref: dict) -> dict:
     """All counts of one interview; ``score`` and the minutes only when there is a final process."""
     out = question_counts(transcript)
+    out["between"] = between_questions(transcript)
     process = final.get("process")
     if isinstance(process, dict) and isinstance(process.get("steps"), list):
         out.update(minutes_counts(process, final.get("assumptions"), ref))
@@ -127,28 +138,32 @@ def _cell(line: dict, key: str) -> str:
 
 def table(lines: list[dict]) -> str:
     lines = last_by_id(lines)
-    rows = ["| процесс | вопросов | повторов | с цифрами | шаги эталона | минуты из ответов / допущения | ₽ | ошибка |",
-            "|---|---|---|---|---|---|---|---|"]
+    # «между» and the edges came after the table was in use: at the end, the columns before stay as they were
+    rows = ["| процесс | вопросов | повторов | с цифрами | шаги эталона | минуты из ответов / допущения | ₽ | ошибка "
+            "| «между» | связи эталона |",
+            "|---|---|---|---|---|---|---|---|---|---|"]
     per_line = ("questions", "repeats", "questions_with_digits", "steps_total", "minutes_answered", "minutes_assumed",
-                "minutes_grounded", "minutes_on_step")
-    tot = dict.fromkeys(per_line + ("steps_found", "steps_ref"), 0)
+                "minutes_grounded", "minutes_on_step", "between")
+    tot = dict.fromkeys(per_line + ("steps_found", "steps_ref", "edges_kept", "edges_ref"), 0)
     rub = 0.0
     for line in lines:
         s = line.get("score") or {}
         found = f"{s['steps_found']} из {s['steps_ref']}" if s else "—"
+        kept = f"{s['edges_kept']} из {s['edges_ref']}" if "edges_kept" in s else "—"
         minutes = f"{line['minutes_answered']} / {line['minutes_assumed']}" if "minutes_answered" in line else "—"
         error = (line.get("error") or "").replace("|", "/")
         rows.append(f"| {line['id']} | {_cell(line, 'questions')} | {_cell(line, 'repeats')} | "
                     f"{_cell(line, 'questions_with_digits')} | {found} | {minutes} | {line.get('rub') or 0:.2f} | "
-                    f"{error} |")
+                    f"{error} | {_cell(line, 'between')} | {kept} |")
         rub += line.get("rub") or 0.0
         for key in per_line:
             tot[key] += line.get(key) or 0
-        for key in ("steps_found", "steps_ref"):
+        for key in ("steps_found", "steps_ref", "edges_kept", "edges_ref"):
             tot[key] += s.get(key) or 0
     rows.append(f"| всего | {tot['questions']} | {tot['repeats']} | {tot['questions_with_digits']} | "
                 f"{fmt(tot['steps_found'], tot['steps_ref'])} | {tot['minutes_answered']} / {tot['minutes_assumed']} | "
-                f"{rub:.2f} | не дошли {sum(1 for x in lines if not x.get('ok'))} из {len(lines)} |")
+                f"{rub:.2f} | не дошли {sum(1 for x in lines if not x.get('ok'))} из {len(lines)} | {tot['between']} | "
+                f"{fmt(tot['edges_kept'], tot['edges_ref'])} |")
     rows.append("")
     rows.append(f"Минуты из ответов — у {tot['minutes_answered']} из {tot['steps_total']} шагов "
                 f"(в v1 из текста — {V1_MINUTES[0]} из {V1_MINUTES[1]}), есть в описании — "
@@ -163,7 +178,10 @@ def read_lines(paths) -> list[dict]:
 
 
 def refresh(line: dict) -> dict:
-    """The minutes counts of a line by today's rules: its process and assumptions are stored."""
+    """The minutes counts and the «between» questions of a line by today's rules: its transcript,
+    process and assumptions are stored."""
+    if "questions" in line and isinstance(line.get("transcript"), list):
+        line["between"] = between_questions(line["transcript"])
     ref = ROOT / "evals" / "reference" / f"{line.get('id')}.json"
     if isinstance(line.get("process"), dict) and ref.is_file():
         line.update(minutes_counts(line["process"], line.get("assumptions"), json.loads(ref.read_text(encoding="utf-8"))))

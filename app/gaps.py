@@ -8,15 +8,25 @@ Gaps, by priority:
 3. ``<step>.role`` — a step with no role or the role «Кто-то»;
 4. ``<step>.branches`` — a decision with fewer than two branches (app.checks.check_draft drops a
    branch that leads nowhere);
-5. ``rate`` — the price of an hour (assumption 700 ₽);
-6. ``<step>.minutes`` — unknown minutes of the step with the largest share of hours;
-7. ``<step>.wait_hours`` — unknown waiting before the step after a handoff between roles with the
+5. ``between.<n>`` — what happens between two steps X -> Y where the role changes: steps hide at a
+   handoff (замер 13.10: 8 questions of 8 went to numbers, 28 reference steps of 42 found). The edge
+   with the most passes first, on a tie by the order of the steps; at most ``MAX_BETWEEN`` an
+   interview. The steps define the scheme, the rate has a fair assumption: so before the rate;
+6. ``rate`` — the price of an hour (assumption 700 ₽);
+7. ``<step>.minutes`` — unknown minutes of the step with the largest share of hours;
+8. ``<step>.wait_hours`` — unknown waiting before the step after a handoff between roles with the
    largest share of days;
-8. ``<role>.people`` — how many people in the role with the largest load.
+9. ``<role>.people`` — how many people in the role with the largest load.
 
 The key of a gap is also the key of the number it asks for (``answered`` in the API). One gap — one
 question: a key once asked is never asked again, whatever the answer («не знаю» leaves the
 assumption).
+
+``between`` asks for no number: its key is unique (``between.1``, ``between.2``) and never goes to
+``answered``. The draft's step ids are the model's and move after a redraw, so the pair asked is
+kept by name (``between_record``) and compared with app.interview.similarity: the same two steps
+are not asked again, nor one of them with a step that was not in the draft then (the pair split by
+the steps of its answer).
 
 «The current calculation» is web/engine.js on the defaults (docs/SPEC.md, «Расчёт»), ported here as
 far as the choice needs it: the shares of branches (a loop back gets 0.2), the visits of each step
@@ -34,10 +44,13 @@ from app.checks import VAGUE_ROLE, cut, normalize
 # web/engine.js DEFAULTS
 DEFAULTS = {"perMonth": 100, "rate": 700, "hoursPerPerson": 120, "taskMin": 15, "decisionMin": 5, "handoffH": 4,
             "loopShare": 0.2}
-ORDER = ("start_end", "volume", "role", "branches", "rate", "minutes", "wait", "people")
+ORDER = ("start_end", "volume", "role", "branches", "between", "rate", "minutes", "wait", "people")
 # what each kind asks for (app.understand), None — not a number
-FIELD = {"start_end": None, "volume": "volume", "role": None, "branches": None, "rate": "rate",
+FIELD = {"start_end": None, "volume": "volume", "role": None, "branches": None, "between": None, "rate": "rate",
          "minutes": "minutes", "wait": "wait_hours", "people": "people"}
+MAX_BETWEEN = 2  # «what happens between X and Y» questions an interview
+BETWEEN = "between."
+WORK = ("task", "decision")
 
 # The four hints of the page (docs/SPEC-analyst.md, «Что видит посетитель») and what the first
 # question calls the process.
@@ -47,16 +60,19 @@ TOPICS = {"заявки": "заявка клиента", "счета": "опла
 _VAGUE = re.compile(r"^(?:кто[- ]?то|некто|неизвестн\w*|не указан\w*|не ясно|неясно|без роли|\?+|-+|—)$")
 _SYSTEM = re.compile(r"^(?:система|программа|crm|срм|бот|робот)$")
 NAME_IN_QUESTION = 60
+NAME_IN_BETWEEN = 50  # two names and the words around them stay under MAX_QUESTION_CHARS
 
 
 @dataclass(frozen=True)
 class Gap:
-    key: str            # "volume", "s3.minutes", "r2.people"…
+    key: str            # "volume", "s3.minutes", "r2.people", "between.1"…
     kind: str           # one of ORDER
     step: str | None = None
     role: str | None = None
     about: str = ""     # what to find out, by name: what the ask model gets
     template: str = ""  # the question when the model gives none
+    to: str | None = None                # between: the step after the handoff (``step`` is before it)
+    pair: tuple[str, str] | None = None  # between: the names of the two steps
 
     @property
     def field(self) -> str | None:
@@ -69,6 +85,10 @@ def is_vague_role(name: str) -> bool:
 
 def is_system_role(name: str) -> bool:
     return bool(_SYSTEM.match(normalize(name or "")))
+
+
+def is_between(key: str | None) -> bool:
+    return str(key or "").startswith(BETWEEN)
 
 
 # ---------- web/engine.js, the part the choice needs ----------
@@ -143,9 +163,9 @@ def minutes_of(step: dict, assumptions: dict) -> float:
 
 # ---------- the gaps ----------
 
-def _name(text: str) -> str:
+def _name(text: str, limit: int = NAME_IN_QUESTION) -> str:
     """A step or role name inside a question: short and without digits."""
-    return cut(strip_digits(text), NAME_IN_QUESTION) or "этот шаг"
+    return cut(strip_digits(text), limit) or "этот шаг"
 
 
 def _lower(name: str) -> str:
@@ -176,8 +196,9 @@ def _start_end(process: dict | None, topic: str | None, phrase: str | None) -> G
 
 
 def find_gaps(process: dict | None, assumptions: dict | None = None, topic: str | None = None,
-              phrase: str | None = None) -> list[Gap]:
-    """Every open gap of the draft in priority order (within a kind: the largest share first)."""
+              phrase: str | None = None, between: list[dict] | None = None) -> list[Gap]:
+    """Every open gap of the draft in priority order (within a kind: the largest share first).
+    ``between``: the «between» gaps asked so far (``between_record``)."""
     a = assumptions or {}
     gaps: list[Gap] = []
     first = _start_end(process, topic, phrase)
@@ -196,7 +217,7 @@ def find_gaps(process: dict | None, assumptions: dict | None = None, topic: str 
     roles = {r["id"]: r for r in process.get("roles") or []}
     external = {rid for rid, r in roles.items() if r.get("external")}
     system = {rid for rid, r in roles.items() if is_system_role(r["name"])}
-    work = [s for s in steps if s["kind"] in ("task", "decision")]
+    work = [s for s in steps if s["kind"] in WORK]
 
     for s in work:
         role = roles.get(s["role"])
@@ -211,12 +232,14 @@ def find_gaps(process: dict | None, assumptions: dict | None = None, topic: str 
             gaps.append(Gap(f"{s['id']}.branches", "branches", step=s["id"],
                             about=f"Какие варианты бывают на развилке «{name}» и куда идёт процесс в каждом.",
                             template=f"Какие варианты бывают на шаге «{name}» и что происходит дальше в каждом?"))
-    if a.get("rate") is None:
-        gaps.append(_rate())
-
     edge_list = edges(process)
     v = visits(process, edge_list)
     by = {s["id"]: s for s in steps}
+    order = {s["id"]: i for i, s in enumerate(steps)}
+    gaps += _between(by, roles, order, edge_list, v, list(between or []))
+    if a.get("rate") is None:
+        gaps.append(_rate())
+
     known_minutes = a.get("minutes") or {}
     shares = []
     for i, s in enumerate(work):
@@ -244,7 +267,6 @@ def find_gaps(process: dict | None, assumptions: dict | None = None, topic: str 
         waits[y] = waits.get(y, 0) + v.get(x, 0) * p * DEFAULTS["handoffH"]
         if y not in sources or v.get(x, 0) * p > v.get(sources[y], 0):
             sources[y] = x
-    order = {s["id"]: i for i, s in enumerate(steps)}
     for y in sorted(waits, key=lambda k: (-waits[k], order[k])):
         dst, src = by[y], by[sources[y]]
         name = _name(dst["name"])
@@ -276,6 +298,56 @@ def find_gaps(process: dict | None, assumptions: dict | None = None, topic: str 
     return sorted(gaps, key=lambda g: rank[g.kind])  # stable: the order within a kind stays
 
 
+def _between(by: dict, roles: dict, order: dict, edge_list: list, v: dict, asked: list[dict]) -> list[Gap]:
+    """Handoffs X -> Y between work steps of different roles, by passes of the edge (visits of X ×
+    its share), on a tie by the order of the steps; the pairs asked before are skipped by name."""
+    passes: dict[tuple[str, str], float] = {}
+    for x, y, p in edge_list:
+        src, dst = by[x], by[y]
+        if src["kind"] in WORK and dst["kind"] in WORK and src["role"] != dst["role"]:
+            passes[(x, y)] = passes.get((x, y), 0) + v.get(x, 0) * p
+    out: list[Gap] = []
+    for x, y in sorted(passes, key=lambda e: (-round(passes[e], 9), order[e[0]], order[e[1]])):
+        if len(asked) + len(out) >= MAX_BETWEEN:
+            break
+        src, dst = by[x], by[y]
+        if _asked_pair(src["name"], dst["name"], asked):
+            continue
+        name_a, name_b = _name(src["name"], NAME_IN_BETWEEN), _name(dst["name"], NAME_IN_BETWEEN)
+        role_a = _name(roles.get(src["role"], {}).get("name") or "предыдущей роли")
+        role_b = _name(roles.get(dst["role"], {}).get("name") or "следующей роли")
+        out.append(Gap(f"{BETWEEN}{len(asked) + len(out) + 1}", "between", step=x, to=y,
+                       pair=(src["name"], dst["name"]),
+                       about=f"Что происходит между шагами «{name_a}» и «{name_b}», когда работа переходит от "
+                             f"«{role_a}» к «{role_b}»: нет ли между ними ещё шагов, которых нет в схеме.",
+                       template=f"Что происходит между «{name_a}» и «{name_b}» — нет ли там ещё шагов?"))
+    return out
+
+
+def _asked_pair(name_a: str, name_b: str, asked: list[dict]) -> bool:
+    """The same two steps by name as a pair asked before, or one of them with a step the draft did
+    not have then: the asked pair split by the steps of its answer."""
+    from app.interview import SIMILAR, similarity  # app.interview imports this module
+
+    def same(x: str, y: str) -> bool:
+        return similarity(x, y) >= SIMILAR
+
+    for r in asked:
+        same_a, same_b = same(name_a, r.get("from") or ""), same(name_b, r.get("to") or "")
+        known = r.get("known") or []
+        if (same_a and same_b) or (same_a and not any(same(name_b, k) for k in known)) \
+                or (same_b and not any(same(name_a, k) for k in known)):
+            return True
+    return False
+
+
+def between_record(gap: Gap, process: dict) -> dict:
+    """What the interview keeps of an asked «between» gap: its key, the names of its two steps and of
+    every work step the draft had when it was asked."""
+    return {"key": gap.key, "from": gap.pair[0], "to": gap.pair[1],
+            "known": [s["name"] for s in process["steps"] if s["kind"] in WORK]}
+
+
 def _rate() -> Gap:
     return Gap("rate", "rate", about="Во сколько компании обходится час работы сотрудника: зарплата с налогами в "
                                     "пересчёте на час.",
@@ -283,10 +355,10 @@ def _rate() -> Gap:
 
 
 def next_gap(process: dict | None, assumptions: dict | None, asked, topic: str | None = None,
-             phrase: str | None = None) -> Gap | None:
+             phrase: str | None = None, between: list[dict] | None = None) -> Gap | None:
     """The open gap with the highest priority that was not asked yet; None — nothing to ask."""
     asked = set(asked or ())
-    return next((g for g in find_gaps(process, assumptions, topic, phrase) if g.key not in asked), None)
+    return next((g for g in find_gaps(process, assumptions, topic, phrase, between) if g.key not in asked), None)
 
 
 # ---------- the wording ----------

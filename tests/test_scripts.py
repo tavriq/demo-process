@@ -98,7 +98,9 @@ def test_dev_server_interview_whole(tmp_path):
     report = client.get(f"{url}/{dev_server.REPORT_ID}").json()
     assert report["status"] == "done" and len(report["transcript"]) == 8
     assert report["process"]["flags"] == {"unquoted": [], "numbers_dropped": []} and report["improve"]["changes"]
-    assert report["answered"] == ["volume", "rate", "s6.minutes", "s2.minutes", "s5.minutes", "s5.wait_hours"]
+    assert report["answered"] == ["volume", "rate", "s6.minutes", "s5.wait_hours"]
+    assert report["transcript"][3]["q"] == "Что происходит после «Собрать и отправить КП» и до «Что ответил клиент?» — " \
+                                           "нет ли там ещё шагов?"
     # the volume wording has digits on purpose: the code replaced it
     assert report["transcript"][1]["q"] == "Сколько примерно таких случаев у вас бывает за месяц?"
 

@@ -56,8 +56,8 @@ MIN_HEARD_BYTES = 1024
 # What a gap asks about, by the start of its description in app.gaps (the ask prompt's «Что узнать»).
 GAP_KINDS = (("start_end", r"Как проходит процесс|С чего начинается|Чем заканчивается"),
              ("volume", r"Сколько раз в месяц"), ("role", r"Кто делает шаг"), ("branches", r"Какие варианты"),
-             ("rate", r"Во сколько компании"), ("minutes", r"Сколько минут работы"),
-             ("wait", r"Сколько обычно ждёт"), ("people", r"Сколько человек"))
+             ("between", r"Что происходит между шагами"), ("rate", r"Во сколько компании"),
+             ("minutes", r"Сколько минут работы"), ("wait", r"Сколько обычно ждёт"), ("people", r"Сколько человек"))
 
 
 def load_fixtures(directory: Path = FIXTURES) -> list[dict]:
@@ -76,16 +76,16 @@ def load_interview(directory: Path = FIXTURES) -> dict:
     return json.loads((directory / "interview.json").read_text(encoding="utf-8"))
 
 
-def gap_kind(prompt: str) -> tuple[str, str]:
-    """(kind of the gap, the step or role it names — for the first question, the process) from the
-    ask prompt."""
+def gap_kind(prompt: str) -> tuple[str, str, str]:
+    """(kind of the gap, the step or role it names — for the first question, the process — and the
+    second step of a «between» gap) from the ask prompt."""
     about = prompt.split("Что узнать:", 1)[-1]
     kind = next((k for k, pattern in GAP_KINDS if re.search(pattern, about)), "start_end")
-    name = re.search(r"«([^»]+)»", about)
+    names = re.findall(r"«([^»]+)»", about)
     if kind == "start_end":
         topic = re.search(r"Тема: ([^.\n]+)", about)
-        return kind, topic[1] if topic else "этот процесс"
-    return kind, name[1] if name else ""
+        return kind, topic[1] if topic else "этот процесс", ""
+    return kind, names[0] if names else "", names[1] if len(names) > 1 else ""
 
 
 class FixtureGateway:
@@ -114,8 +114,8 @@ class FixtureGateway:
             drafts = [d for d in iv["drafts"][:max(1, n)] if d is not None]
             return drafts[-1] if drafts else iv["drafts"][0]
         if name == "question":
-            kind, step = gap_kind(prompt)
-            return {"text": iv["questions"][kind].format(name=step)}
+            kind, step, to = gap_kind(prompt)
+            return {"text": iv["questions"][kind].format(name=step, to=to)}
         if name == "process" and "Вопрос 1:" in prompt:
             return iv["extract"]
         f = self.pick(name, prompt)
