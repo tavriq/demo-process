@@ -60,6 +60,8 @@ const fmtDays = (d) => (isFinite(d) ? n1(d) : '> ' + E.OVER_DAYS);
 function mount(root, opts) {
   opts = Object.assign({ api: '/api/process/', examplesBase: null, first: 'sales', motion: true, mail: null, poll: 1000 }, opts);
   const mq = window.matchMedia ? matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
+  // от 900 px — пул BPMN с дорожками ролей (координаты те же, что в .bpmn), уже — схема сверху вниз
+  const wq = window.matchMedia ? matchMedia('(min-width: 900px)') : { matches: false };
   // ans — поля из ответов (null у примеров), A0 — допущения без правок, rep — id отчёта
   const st = { data: null, name: null, mode: 'before', A: E.assume(), A0: null, ans: null, edited: {}, rep: null, mins: {}, over: {}, sel: null, width: 0, shown: {}, ext: new Set() };
   const iv = { id: null, count: 0, busy: false, view: 'start' };
@@ -86,6 +88,7 @@ function mount(root, opts) {
   s('rect', { width: 4, height: 4, class: 'pr-hbg' }, pat);
   s('rect', { width: 1.6, height: 4, class: 'pr-hl' }, pat);
   const col = (id) => (st.ext && st.ext.has(id) ? 'var(--muted)' : roleVar(id));
+  const gL = s('g', {}, svg);
   const gE = s('g', {}, svg);
   const gN = s('g', {}, svg);
   const gD = s('g', { 'aria-hidden': 'true' }, svg);
@@ -96,7 +99,10 @@ function mount(root, opts) {
   svg.setAttribute('hidden', '');
   title.textContent = 'Загружаю пример…';
   title.classList.add('pr-wait');
-  const wrap = h('div', { class: 'pr-wrap' }, [msg, svg]);
+  // слой заголовков дорожек: при прокрутке вбок закреплён слева (sticky)
+  const hd = s('svg', { class: 'pr-hd', 'aria-hidden': 'true' });
+  const wrap = h('div', { class: 'pr-wrap' }, [msg, h('div', { class: 'pr-stage' }, [hd, svg])]);
+  const nw = () => Math.round(Math.max(300, Math.min(520, wrap.clientWidth || 360)));
 
   const seg = h('div', { class: 'pr-seg', role: 'group', 'aria-label': 'Было или стало' });
   const modeBtn = {};
@@ -260,13 +266,16 @@ function mount(root, opts) {
 
   /* ---------- схема ---------- */
   function render() {
-    const W = Math.round(Math.max(300, Math.min(520, wrap.clientWidth || 360)));
-    st.width = W;
+    st.wide = wq.matches;
+    wrap.classList.toggle('pr-wide', st.wide);
+    const W = nw();
+    st.width = st.wide ? 0 : W;
     const res = st.mode === 'before' ? calcB : calcA;
-    lay = E.layout(cur, { width: W });
-    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + lay.height);
-    svg.setAttribute('width', W);
+    lay = st.wide ? E.pool(cur) : E.layout(cur, { width: W });
+    svg.setAttribute('viewBox', '0 0 ' + lay.width + ' ' + lay.height);
+    svg.setAttribute('width', lay.width);
     svg.setAttribute('height', lay.height);
+    drawLanes(res);
     gE.textContent = '';
     lay.edges.forEach((e) => {
       s('path', { d: E.pathD(e.pts, 6), class: 'pr-e' + (e.back ? ' pr-back' : ''), 'marker-end': 'url(#' + arrow + (e.back ? 'b' : '') + ')' }, gE);
@@ -313,13 +322,16 @@ function mount(root, opts) {
     g.setAttribute('aria-label', KIND[step.kind] + ': ' + step.name);
     const hot = info && info.level !== 'ok' && (step.kind === 'task' || step.kind === 'decision');
     if (hot) g.classList.add('pr-hot');
+    // в пуле текст 12 px: шаг строки 14, значок «авто» крупнее
+    const lh = n.pool ? 14 : 12;
+    const k = n.pool ? 1.2 : 1;
     const lines = (x, y0, cls, anchor) => {
       const t = s('text', { class: cls, 'text-anchor': anchor || 'start' }, g);
-      n.lines.forEach((l, i) => s('tspan', { x, y: y0 + i * 12, text: l }, t));
+      n.lines.forEach((l, i) => s('tspan', { x, y: y0 + i * lh, text: l }, t));
     };
     const badge = (x, y) => {
-      s('rect', { x: x - 15, y: y - 7, width: 30, height: 14, rx: 7, class: 'pr-auto' }, g);
-      s('text', { x, y: y + 3.5, 'text-anchor': 'middle', class: 'pr-autot', text: 'авто' }, g);
+      s('rect', { x: x - 15 * k, y: y - 7 * k, width: 30 * k, height: 14 * k, rx: 7 * k, class: 'pr-auto' }, g);
+      s('text', { x, y: y + 3.5 * k, 'text-anchor': 'middle', class: 'pr-autot', text: 'авто' }, g);
     };
     if (n.kind === 'task') {
       const w = n.sw;
@@ -328,25 +340,52 @@ function mount(root, opts) {
       s('rect', { x: -w / 2, y: -hh / 2, width: w, height: hh, rx: 9, class: 'pr-box' }, g);
       const ex = st.ext.has(step.role) && !step.auto;
       s('rect', { x: -w / 2 + 4, y: -hh / 2 + 6, width: ex ? 5 : 3.5, height: hh - 12, rx: 1.75, class: ex ? 'pr-hatch' : 'pr-stripe', fill: ex ? 'url(#' + arrow + 'h)' : null }, g);
-      lines(-w / 2 + 13, 4 - ((n.lines.length - 1) * 12) / 2, 'pr-t');
-      if (step.auto) badge(w / 2 - 19, -hh / 2);
+      lines(-w / 2 + 13, 4 - ((n.lines.length - 1) * lh) / 2, 'pr-t');
+      if (step.auto) badge(n.pool ? 23 - w / 2 : w / 2 - 19, n.pool ? -hh / 2 - 4 : -hh / 2);
     } else {
       const r = n.sw / 2;
       if (n.kind === 'decision') {
         if (hot) s('path', { d: `M0 ${-r - 4}L${r + 4} 0L0 ${r + 4}L${-r - 4} 0Z`, class: 'pr-hotbg' }, g);
         s('path', { d: `M0 ${-r}L${r} 0L0 ${r}L${-r} 0Z`, class: 'pr-gw' }, g);
         s('path', { d: 'M-5 -5L5 5M5 -5L-5 5', class: 'pr-gwx' }, g);
-        if (step.auto) badge(-r - 21, 0);
+        if (step.auto) badge(n.pool ? 0 : -r - 21, n.pool ? -r - 10 : 0);
       } else {
         s('circle', { r, class: 'pr-ev', 'stroke-width': n.kind === 'end' ? 3 : 1.8 }, g);
         if (n.kind === 'end') s('circle', { r: 5, class: 'pr-evd' }, g);
       }
-      lines(n.lx - n.cx, 4 - ((n.lines.length - 1) * 12) / 2, 'pr-ts');
+      lines(n.pool ? n.tx : n.lx - n.cx, n.pool ? n.ty : 4 - ((n.lines.length - 1) * 12) / 2, 'pr-ts', n.ta);
     }
     if (hot && n.kind === 'task' && info.queueN >= 0.5) {
       const q = isFinite(info.queueN) ? 'очередь ' + n0(Math.max(1, Math.round(info.queueN))) + ' · ждут ' + fmtDays(info.queueDays) + ' дн' : 'очередь растёт · ждут > ' + E.OVER_DAYS + ' дн';
-      s('text', { x: -n.sw / 2, y: n.sh / 2 + 13, class: 'pr-ql pr-halo', text: q }, g);
+      const t = s('text', { class: 'pr-ql pr-halo' }, g);
+      (n.pool ? q.split(' · ') : [q]).forEach((l, i) => s('tspan', { x: -n.sw / 2, y: n.sh / 2 + 13 + i * lh, text: l }, t));
     }
+  }
+
+  /* пул: рамка и дорожки — в схеме, полоса процесса и заголовки дорожек — в слое hd поверх неё; у перегруженной роли имя красное */
+  function drawLanes(res) {
+    gL.textContent = hd.textContent = '';
+    if (!lay.pool) return;
+    const w = 2 * lay.head + 1;
+    hd.setAttribute('viewBox', '0 0 ' + w + ' ' + lay.height);
+    hd.setAttribute('width', w);
+    hd.setAttribute('height', lay.height);
+    const vtext = (x, y, ls, cls, g) => {
+      const t = s('text', { class: cls, 'text-anchor': 'middle', transform: 'translate(' + x + ' ' + y + ') rotate(-90)' }, g);
+      ls.forEach((l, i) => s('tspan', { x: 0, y: (i - (ls.length - 1) / 2) * 14 + 4, text: l }, t));
+    };
+    s('rect', { width: w, height: lay.height, class: 'pr-hbk' }, hd);
+    [gL, hd].forEach((g) => s('rect', { x: 0.5, y: 0.5, width: lay.width - 1, height: lay.height - 1, class: 'pr-pool' }, g));
+    vtext(lay.head / 2, lay.height / 2, lay.titleLines, 'pr-pt', hd);
+    lay.lanes.forEach((l) => {
+      const R = res.roles[l.role];
+      const ex = st.ext.has(l.role);
+      s('rect', { x: l.x, y: l.y, width: l.w, height: l.h, class: 'pr-lb' }, gL);
+      const g = s('g', { class: 'pr-lane' + (R && R.level !== 'ok' ? ' pr-hot' : '') }, hd);
+      g.style.setProperty('--c', col(l.role));
+      s('rect', { x: l.x, y: l.y, width: lay.head, height: l.h, class: 'pr-lh' + (ex ? ' pr-lx' : ''), fill: ex ? 'url(#' + arrow + 'h)' : null }, g);
+      vtext(l.x + lay.head / 2, l.y + l.h / 2, l.lines, 'pr-lt', g);
+    });
   }
 
   function drawLegend(res) {
@@ -498,7 +537,8 @@ function mount(root, opts) {
   document.addEventListener('visibilitychange', kick);
   if (mq.addEventListener) mq.addEventListener('change', () => { drawDots(); kick(); });
   let rt = 0;
-  const relayout = () => { clearTimeout(rt); rt = setTimeout(() => { if (cur && Math.round(Math.max(300, Math.min(520, wrap.clientWidth))) !== st.width) render(); }, 150); };
+  // пул от ширины не зависит
+  const relayout = () => { clearTimeout(rt); rt = setTimeout(() => { if (cur && (wq.matches !== st.wide || (st.wide ? 0 : nw()) !== st.width)) render(); }, 150); };
   window.addEventListener('resize', relayout);
 
   /* ---------- панель шага ---------- */

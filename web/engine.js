@@ -304,7 +304,8 @@ function wrap(text, max, lines) {
   return out;
 }
 
-function dfsBack(proc) {
+/* Обход из старта: порядок, обратные рёбра (петли), рёбра f1…fN и ранги — для layout и pool. */
+function graph(proc) {
   const by = index(proc);
   const state = {};
   const back = new Set();
@@ -321,7 +322,11 @@ function dfsBack(proc) {
   };
   go(startOf(proc).id);
   proc.steps.forEach((s) => { if (!state[s.id]) go(s.id); });
-  return { back, order };
+  const E = [];
+  proc.steps.forEach((s) => outs(s).forEach((o) => {
+    if (by[o.to]) E.push({ id: 'f' + (E.length + 1), from: s.id, to: o.to, label: o.label, back: back.has(s.id + '>' + o.to) });
+  }));
+  return { by, order, E, rank: ranks(proc, E) };
 }
 
 function ranks(proc, E) {
@@ -344,13 +349,7 @@ function ranks(proc, E) {
 /* По рангам сверху вниз, в ряд до 3 мест (решение — 2). Обратные рёбра — справа, обходы — слева. */
 function layout(proc, opts) {
   const W = (opts && opts.width) || 360;
-  const by = index(proc);
-  const { back, order } = dfsBack(proc);
-  const E = [];
-  proc.steps.forEach((s) => outs(s).forEach((o) => {
-    if (by[o.to]) E.push({ from: s.id, to: o.to, label: o.label, back: back.has(s.id + '>' + o.to) });
-  }));
-  const rank = ranks(proc, E);
+  const { by, order, E, rank } = graph(proc);
   const nBack = E.filter((e) => e.back).length;
   let leftN = 0;
   let res = null;
@@ -478,6 +477,198 @@ function simplify(pts) {
     const b = p[i + 1];
     return !((a[0] === q[0] && q[0] === b[0]) || (a[1] === q[1] && q[1] === b[1]));
   });
+}
+
+/* ---------- пул BPMN: дорожки ролей слева направо — экран от 900 px и .bpmn ---------- */
+
+// текст пула 12 px: cw — ширина буквы с запасом, lh — шаг строки
+const PG = { head: 32, tw: 110, gw: 36, ew: 30, lw: 84, gap: 24, tr: 6, mTop: 18, mBot: 34, cw: 7, lh: 14 };
+
+/* Столбец — ранг (как в layout), ряд — дорожка роли (под-ряд, если у роли в ранге несколько шагов). Вертикали рёбер
+   идут в зазорах между столбцами, горизонтали — в полосах между рядами: шаги они не пересекают. */
+function pool(proc) {
+  const { by, order, E, rank } = graph(proc);
+  const roles = proc.roles.filter((r) => proc.steps.some((s) => roleOf(s) === r.id));
+  proc.steps.forEach((s) => { if (!roles.some((r) => r.id === roleOf(s))) roles.push({ id: roleOf(s), name: roleOf(s) === SYS ? SYS_NAME : roleOf(s) }); });
+  const nodes = {};
+  const rows = [];
+  const colW = [];
+  const cell = {};
+  const lanes = roles.map((r) => {
+    const first = rows.length;
+    const ids = order.filter((id) => roleOf(by[id]) === r.id);
+    ids.forEach((id) => {
+      const s = by[id];
+      const row = first + ids.filter((o) => rank[o] === rank[id]).indexOf(id);
+      while (rows.length <= row) rows.push({ ids: [] });
+      rows[row].ids.push(id);
+      cell[row + ':' + rank[id]] = id;
+      const n = nodes[id] = { id, kind: s.kind, col: rank[id], row, pool: true };
+      if (s.kind === 'task') {
+        n.sw = n.bw = PG.tw;
+        n.lines = wrap(s.name, Math.floor((PG.tw - 16) / PG.cw), 9);
+        n.sh = Math.max(56, n.lines.length * PG.lh + 14);
+        n.up = n.sh / 2;
+      } else {
+        // подпись события и развилки — над фигурой (у авто — над значком): справа выходят рёбра, снизу — возвраты
+        n.sw = n.sh = s.kind === 'decision' ? PG.gw : PG.ew;
+        n.lines = wrap(s.name, Math.floor(PG.lw / PG.cw), 9);
+        n.bw = Math.max(n.sw, 2 * Math.ceil(Math.max.apply(null, n.lines.map((l) => l.length)) * PG.cw / 2));
+        n.a = s.auto ? 18 : 0;
+        n.up = n.sh / 2 + 4 + n.a + n.lines.length * PG.lh;
+      }
+      colW[n.col] = Math.max(colW[n.col] || 0, n.bw);
+    });
+    return { r, first, last: rows.length - 1, ids };
+  });
+
+  // Маршрут в символах: G — дорожка в зазоре после столбца, H — в полосе над рядом, номер дорожки — третьим.
+  const plans = E.map((e) => {
+    const u = nodes[e.from];
+    const v = nodes[e.to];
+    const yu = ['Y', u.id];
+    const yv = ['Y', v.id];
+    if (e.back) {
+      const xu = ['C', u.id];
+      const xv = ['C', v.id];
+      const h1 = ['H', u.row + 1, 0];
+      const g = ['G', v.col, 0];
+      const p = [[xu, ['B', u.id]], [xu, h1]];
+      if (u === v) return p.concat([[g, h1], [g, yu], [['R', u.id], yu]]);
+      if (u.row === v.row) return p.concat([[xv, h1], [xv, ['B', v.id]]]);
+      const h2 = ['H', v.row + 1, 0];
+      return p.concat([[g, h1], [g, h2], [xv, h2], [xv, ['B', v.id]]]);
+    }
+    const R = [['R', u.id], yu];
+    const L = [['L', v.id], yv];
+    let free = u.row === v.row;
+    for (let c = u.col + 1; free && c < v.col; c++) free = !cell[u.row + ':' + c];
+    if (free) return [R, L];
+    const g1 = ['G', u.col, 0];
+    if (v.col === u.col + 1) return [R, [g1, yu], [g1, yv], L];
+    const g2 = ['G', v.col - 1, 0];
+    const h = ['H', v.row > u.row ? v.row : v.row + 1, 0];
+    return [R, [g1, yu], [g1, h], [g2, h], [g2, yv], L];
+  });
+  // Отрезки в одном зазоре (полосе), что делят хоть точку, — на разные дорожки; общая — только у входов в один шаг.
+  const lists = { G: {}, H: {} };
+  const sym = (r) => (r[0] === 'G' ? 2 * r[1] + 2 : r[0] === 'H' ? 2 * r[1] : r[0] === 'C' ? 2 * nodes[r[1]].col + 1 : 2 * nodes[r[1]].row + 1);
+  plans.forEach((pts, i) => pts.forEach((b, k) => {
+    const a = pts[k - 1];
+    const j = a && (a[0] === b[0] && a[0][0] === 'G' ? 1 : a[1] === b[1] && a[1][0] === 'H' ? 0 : -1);
+    if (!(j >= 0)) return;
+    const ref = a[1 - j];
+    const p = sym(a[j]);
+    const q = sym(b[j]);
+    (lists[ref[0]][ref[1]] || (lists[ref[0]][ref[1]] = [])).push({ e: E[i], ref, lo: Math.min(p, q), hi: Math.max(p, q), last: k === pts.length - 2 });
+  }));
+  const assign = (list) => {
+    const tr = [];
+    (list || []).sort((a, b) => b.hi - b.lo - (a.hi - a.lo) || a.lo - b.lo).forEach((s) => {
+      let t = 0;
+      while ((tr[t] || []).some((o) => o.e !== s.e && Math.max(o.lo, s.lo) <= Math.min(o.hi, s.hi) && !(o.last && s.last && o.e.to === s.e.to))) t++;
+      (tr[t] || (tr[t] = [])).push(s);
+      s.ref[2] = t;
+    });
+    return tr.length;
+  };
+  // зазор, где кончается ветка с подписью, — шире подписи: она встаёт перед целью, правее всех вертикалей
+  const lw = (e) => e.label.length * PG.cw + 4;
+  const need = [];
+  E.forEach((e, i) => {
+    const g = plans[i].length > 2 ? nodes[e.to].col - 1 : nodes[e.from].col;
+    if (e.label && !e.back && (plans[i].length > 2 || nodes[e.to].col === g + 1)) need[g] = Math.max(need[g] || 0, Math.ceil(lw(e)) + 10);
+  });
+  const X0 = 2 * PG.head + 16;
+  const colX = [];
+  const gapX = [];
+  let x = X0;
+  colW.forEach((w, c) => {
+    colX[c] = x;
+    const n = assign(lists.G[c]);
+    const k = need[c] || 0;
+    gapX[c] = { l: x + w, w: Math.max(c < colW.length - 1 ? PG.gap : 20, 24 + (n - 1) * PG.tr, k && 12 + n * PG.tr + k), n, k };
+    x += w + gapX[c].w;
+  });
+  const W = x;
+  const hOf = (l) => {
+    let h = 0;
+    for (let k = l.first; k <= l.last; k++) h += rows[k].h;
+    return h;
+  };
+  rows.forEach((r) => {
+    r.up = Math.max.apply(null, r.ids.map((id) => nodes[id].up));
+    r.h = PG.mTop + r.up + Math.max.apply(null, r.ids.map((id) => nodes[id].sh / 2)) + PG.mBot;
+  });
+  // имя роли — до двух строк поперёк дорожки
+  lanes.forEach((l) => { rows[l.last].h += Math.max(0, Math.ceil((String(l.r.name).length / 2 + 2) * PG.cw + 16) - hOf(l)); });
+  const bandY = [];
+  let y = 0;
+  rows.concat([null]).forEach((r, k) => {
+    const n = assign(lists.H[k]);
+    bandY[k] = y;
+    y += n ? 6 + n * PG.tr : 0;
+    if (!r) return;
+    r.cy = y + PG.mTop + r.up;
+    y += r.h;
+  });
+  const H = y;
+  Object.keys(nodes).forEach((id) => {
+    const n = nodes[id];
+    n.cx = colX[n.col] + colW[n.col] / 2;
+    n.cy = rows[n.row].cy;
+    n.sx = n.cx - n.sw / 2;
+    n.sy = n.cy - n.sh / 2;
+    n.top = n.cy - n.up;
+    n.bottom = n.sy + n.sh;
+    n.box = { x: n.cx - n.bw / 2, y: n.top, w: n.bw, h: n.up + n.sh / 2 };
+    if (n.kind !== 'task') {
+      Object.assign(n, { tx: 0, ty: -n.sh / 2 - 7 - n.a - (n.lines.length - 1) * PG.lh, ta: 'middle' });
+      n.label = { x: n.box.x, y: n.top, w: n.bw, h: n.lines.length * PG.lh + 2 };
+    }
+  });
+  const X = (r) => {
+    const n = nodes[r[1]];
+    const g = gapX[r[1]];
+    return r[0] === 'G' ? g.l + (g.k ? 12 : Math.round((g.w - (g.n - 1) * PG.tr) / 2)) + r[2] * PG.tr : r[0] === 'R' ? n.cx + n.sw / 2 : r[0] === 'L' ? n.sx : n.cx;
+  };
+  const Y = (r) => (r[0] === 'H' ? bandY[r[1]] + 6 + r[2] * PG.tr : r[0] === 'B' ? nodes[r[1]].bottom : nodes[r[1]].cy);
+  const out = E.map((e, i) => Object.assign({}, e, { pts: simplify(plans[i].map((p) => [X(p[0]), Y(p[1])])) }));
+
+  // Подпись ветки — первое место у ребра без шагов, рёбер и других подписей: у прямой — у развилки, у ветки
+  // с поворотом — перед целью (выход из развилки у веток общий, последний отрезок — только её).
+  const hit = (a, b, m) => a.x < b.x + b.w + m && b.x < a.x + a.w + m && a.y < b.y + b.h + m && b.y < a.y + a.h + m;
+  const busy = [];
+  Object.keys(nodes).forEach((id) => { const n = nodes[id]; busy.push({ x: n.sx, y: n.sy, w: n.sw, h: n.sh, m: 2 }, Object.assign({ m: 2 }, n.label || n.box)); });
+  out.forEach((e) => e.pts.forEach((p, i) => {
+    const q = e.pts[i - 1];
+    if (q) busy.push({ x: Math.min(p[0], q[0]), y: Math.min(p[1], q[1]), w: Math.abs(p[0] - q[0]), h: Math.abs(p[1] - q[1]), m: 0 });
+  }));
+  out.forEach((e) => {
+    if (!e.label) return;
+    const w = lw(e);
+    const at = (i) => {
+      const a = e.pts[i];
+      const b = e.pts[i + 1];
+      const d = b[0] > a[0] ? 1 : -1;
+      const ly = b[1] > a[1] ? a[1] + 14 : a[1] - 6;
+      return a[1] === b[1] ? [[a[0] + 5 * d, a[1] - 5, d], [a[0] + 5 * d, a[1] + 13, d]] : [[a[0] + 5, ly, 1], [a[0] - 5, ly, -1]];
+    };
+    const z = e.pts[e.pts.length - 1];
+    const end = [[z[0] - 4, z[1] - 5, -1]];
+    const cand = e.back ? at(0).concat(at(1)) : e.pts.length < 3 ? at(0).concat(end) : end.concat(at(1), at(0));
+    const rect = (q) => ({ x: q[2] > 0 ? q[0] : q[0] - w, y: q[1] - 10, w, h: 14, m: 1 });
+    const q = cand.find((c) => { const r = rect(c); return r.x >= X0 - 12 && r.x + w <= W && !busy.some((b) => hit(r, b, b.m)); }) || cand[0];
+    e.lab = { x: q[0], y: q[1], a: q[2] > 0 ? 'start' : 'end' };
+    busy.push(e.labBox = rect(q));
+  });
+  const laneOut = lanes.map((l, i) => {
+    const y0 = bandY[l.first];
+    const h = (i === lanes.length - 1 ? H : bandY[l.last + 1]) - y0;
+    const ids = l.ids.slice().sort((a, b) => nodes[a].col - nodes[b].col || nodes[a].row - nodes[b].row);
+    return { id: 'Lane_' + l.r.id, role: l.r.id, name: l.r.name, x: PG.head, y: y0, w: W - PG.head, h, ids, lines: wrap(l.r.name, Math.floor((h - 16) / PG.cw), 2) };
+  });
+  return { pool: true, width: W, height: H, head: PG.head, nodes, edges: out, lanes: laneOut, titleLines: wrap(proc.title || 'Процесс', Math.floor((H - 16) / PG.cw), 2) };
 }
 
 /* SVG-путь со скруглёнными углами. */
@@ -655,44 +846,10 @@ function createSim(proc, res, lay, opts) {
 
 const esc = (s) => String(s == null ? '' : s).replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' })[c]);
 
-/* Дорожки — горизонтальные полосы ролей, столбец узла — ранг из раскладки. */
+/* Координаты — из pool(): тот же пул, что на экране от 900 px. */
 function toBpmn(proc, opts) {
   opts = opts || {};
-  const by = index(proc);
-  const { back, order } = dfsBack(proc);
-  const E = [];
-  proc.steps.forEach((s) => outs(s).forEach((o) => {
-    if (by[o.to]) E.push({ id: 'f' + (E.length + 1), from: s.id, to: o.to, label: o.label, back: back.has(s.id + '>' + o.to) });
-  }));
-  const rank = ranks(proc, E);
-  const roles = proc.roles.filter((r) => proc.steps.some((s) => roleOf(s) === r.id));
-  proc.steps.forEach((s) => { if (!roles.some((r) => r.id === roleOf(s))) roles.push({ id: roleOf(s), name: roleOf(s) === SYS ? SYS_NAME : roleOf(s) }); });
-  const LX = 30;
-  const X0 = 70;
-  const COL = 150;
-  const ROW = 110;
-  const pos = {};
-  let y = 0;
-  const lanes = roles.map((r) => {
-    const ids = order.filter((id) => roleOf(by[id]) === r.id);
-    const sub = {};
-    ids.forEach((id) => {
-      const k = ids.filter((o) => rank[o] === rank[id]).indexOf(id);
-      sub[id] = k;
-    });
-    const depth = Math.max(1, Math.max.apply(null, ids.map((id) => sub[id] + 1)));
-    ids.forEach((id) => {
-      const s = by[id];
-      const [w, h] = s.kind === 'task' ? [100, 80] : s.kind === 'decision' ? [50, 50] : [36, 36];
-      const cx = LX + X0 + rank[id] * COL + 50;
-      const cy = y + ROW / 2 + sub[id] * ROW;
-      pos[id] = { x: cx - w / 2, y: cy - h / 2, w, h, cx, cy };
-    });
-    const lane = { r, ids, y, h: depth * ROW };
-    y += lane.h;
-    return lane;
-  });
-  const width = LX + X0 + (Math.max.apply(null, proc.steps.map((s) => rank[s.id])) + 1) * COL + 40;
+  const P = pool(proc);
   const tag = (s) => (s.kind === 'start' ? 'startEvent' : s.kind === 'end' ? 'endEvent' : s.kind === 'decision' ? 'exclusiveGateway' : s.auto ? 'serviceTask' : 'task');
   const L = [];
   L.push('<?xml version="1.0" encoding="UTF-8"?>');
@@ -704,8 +861,8 @@ function toBpmn(proc, opts) {
   L.push('  </bpmn:collaboration>');
   L.push('  <bpmn:process id="Process_1" isExecutable="false">');
   L.push('    <bpmn:laneSet id="LaneSet_1">');
-  lanes.forEach((l) => {
-    L.push('      <bpmn:lane id="Lane_' + l.r.id + '" name="' + esc(l.r.name) + '">');
+  P.lanes.forEach((l) => {
+    L.push('      <bpmn:lane id="' + l.id + '" name="' + esc(l.name) + '">');
     l.ids.forEach((id) => L.push('        <bpmn:flowNodeRef>' + id + '</bpmn:flowNodeRef>'));
     L.push('      </bpmn:lane>');
   });
@@ -715,32 +872,22 @@ function toBpmn(proc, opts) {
     if (s.quote) L.push('      <bpmn:documentation>' + esc(s.quote) + '</bpmn:documentation>');
     L.push('    </bpmn:' + tag(s) + '>');
   });
-  E.forEach((e) => L.push('    <bpmn:sequenceFlow id="' + e.id + '"' + (e.label ? ' name="' + esc(e.label) + '"' : '') +
+  P.edges.forEach((e) => L.push('    <bpmn:sequenceFlow id="' + e.id + '"' + (e.label ? ' name="' + esc(e.label) + '"' : '') +
     ' sourceRef="' + e.from + '" targetRef="' + e.to + '" />'));
   L.push('  </bpmn:process>');
   L.push('  <bpmndi:BPMNDiagram id="BPMNDiagram_1">');
   L.push('    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Collaboration_1">');
   const b = (x, yy, w, h) => '<dc:Bounds x="' + Math.round(x) + '" y="' + Math.round(yy) + '" width="' + Math.round(w) + '" height="' + Math.round(h) + '" />';
-  L.push('      <bpmndi:BPMNShape id="Participant_1_di" bpmnElement="Participant_1" isHorizontal="true">' + b(0, 0, width, y) + '</bpmndi:BPMNShape>');
-  lanes.forEach((l) => L.push('      <bpmndi:BPMNShape id="Lane_' + l.r.id + '_di" bpmnElement="Lane_' + l.r.id + '" isHorizontal="true">' + b(LX, l.y, width - LX, l.h) + '</bpmndi:BPMNShape>'));
+  const lab = (r) => (r ? '<bpmndi:BPMNLabel>' + b(r.x, r.y, r.w, r.h) + '</bpmndi:BPMNLabel>' : '');
+  L.push('      <bpmndi:BPMNShape id="Participant_1_di" bpmnElement="Participant_1" isHorizontal="true">' + b(0, 0, P.width, P.height) + '</bpmndi:BPMNShape>');
+  P.lanes.forEach((l) => L.push('      <bpmndi:BPMNShape id="' + l.id + '_di" bpmnElement="' + l.id + '" isHorizontal="true">' + b(l.x, l.y, l.w, l.h) + '</bpmndi:BPMNShape>'));
   proc.steps.forEach((s) => {
-    const p = pos[s.id];
-    L.push('      <bpmndi:BPMNShape id="' + s.id + '_di" bpmnElement="' + s.id + '"' + (s.kind === 'decision' ? ' isMarkerVisible="true"' : '') + '>' + b(p.x, p.y, p.w, p.h) + '</bpmndi:BPMNShape>');
+    const n = P.nodes[s.id];
+    L.push('      <bpmndi:BPMNShape id="' + s.id + '_di" bpmnElement="' + s.id + '"' + (s.kind === 'decision' ? ' isMarkerVisible="true"' : '') + '>' + b(n.sx, n.sy, n.sw, n.sh) + lab(n.label) + '</bpmndi:BPMNShape>');
   });
-  E.forEach((e) => {
-    const a = pos[e.from];
-    const c = pos[e.to];
-    let w;
-    if (e.back) {
-      const low = Math.max(a.y + a.h, c.y + c.h) + 18;
-      w = [[a.cx, a.y + a.h], [a.cx, low], [c.cx, low], [c.cx, c.y + c.h]];
-    } else if (Math.abs(a.cy - c.cy) < 1) w = [[a.x + a.w, a.cy], [c.x, c.cy]];
-    else {
-      const mx = c.x - 25;
-      w = [[a.x + a.w, a.cy], [mx, a.cy], [mx, c.cy], [c.x, c.cy]];
-    }
+  P.edges.forEach((e) => {
     L.push('      <bpmndi:BPMNEdge id="' + e.id + '_di" bpmnElement="' + e.id + '">' +
-      w.map((p) => '<di:waypoint x="' + Math.round(p[0]) + '" y="' + Math.round(p[1]) + '" />').join('') + '</bpmndi:BPMNEdge>');
+      e.pts.map((p) => '<di:waypoint x="' + Math.round(p[0]) + '" y="' + Math.round(p[1]) + '" />').join('') + lab(e.labBox) + '</bpmndi:BPMNEdge>');
   });
   L.push('    </bpmndi:BPMNPlane>');
   L.push('  </bpmndi:BPMNDiagram>');
@@ -751,6 +898,6 @@ function toBpmn(proc, opts) {
 return {
   DEFAULTS, SYS, SYS_NAME, OVER_DAYS,
   assume, applyAnswers, withAnswers, report, externals, edges, visits, calc, actions, after, minutesOf, rawMinutes, edgeWait,
-  wrap, layout, pathD, along, rng, createSim, toBpmn,
+  wrap, layout, pool, pathD, along, rng, createSim, toBpmn,
 };
 });

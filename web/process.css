@@ -46,6 +46,7 @@
 .pr { --pr-reserve: 1120px; }
 @media (min-width: 400px) { .pr { --pr-reserve: 1075px; } }
 @media (min-width: 700px) { .pr { --pr-reserve: 1045px; } }
+@media (min-width: 900px) { .pr { --pr-reserve: 878px; } }
 .pr-first .pr-body { min-height: var(--pr-reserve); }
 .pr-svg { display: block; margin: 0 auto; max-width: 100%; height: auto; overflow: visible; font-family: var(--sans); }
 .pr-msg { color: var(--muted); text-align: center; padding: 60px 0; margin: 0; }
@@ -79,6 +80,23 @@
 .pr-dot.pr-q { fill: var(--red); fill-opacity: .9; }
 .pr-dot.pr-s { fill: var(--c, var(--ink)); fill-opacity: 1; }
 .pr-more { font-size: 9.5px; font-weight: 600; fill: var(--red); }
+/* от 900 px: пул BPMN шире колонки текста — по центру колонки, в масштабе 1:1 (весь текст пула — 12 px);
+   длинный процесс прокручивается вбок, а полоса процесса и заголовки дорожек (.pr-hd) стоят слева поверх схемы */
+.pr-wrap.pr-wide { --pr-pw: min(1400px, calc(100vw - 64px)); width: var(--pr-pw); margin-left: calc((100% - var(--pr-pw)) / 2); overflow-x: auto; }
+.pr-wide .pr-stage { display: grid; width: max-content; margin: 0 auto; }
+.pr-wide .pr-stage > svg { grid-area: 1 / 1; }
+.pr-wide .pr-svg { max-width: none; }
+.pr-hd { display: none; }
+.pr-wide .pr-hd { display: block; position: sticky; left: 0; z-index: 1; justify-self: start; align-self: start; font-family: var(--sans); }
+.pr-hbk { fill: var(--bg); }
+.pr-wide .pr-t, .pr-wide .pr-ts, .pr-wide .pr-el, .pr-wide .pr-ql, .pr-wide .pr-autot, .pr-wide .pr-more { font-size: 12px; }
+.pr-pool { fill: none; stroke: var(--line-2); }
+.pr-lb { fill: none; stroke: var(--line-2); }
+.pr-lh { fill: var(--c); fill-opacity: .1; stroke: var(--line-2); }
+.pr-lh.pr-lx { fill-opacity: .45; }
+.pr-lt { font-size: 12px; font-weight: 600; fill: var(--ink); }
+.pr-pt { font-size: 12px; fill: var(--muted); }
+.pr-lane.pr-hot .pr-lt { fill: var(--red); }
 
 /* счётчики */
 .pr-bar {

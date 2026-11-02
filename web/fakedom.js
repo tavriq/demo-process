@@ -1,5 +1,6 @@
 // Минимальный DOM для node-тестов окна: ровно то, чем пользуются engine.js и process.js. В окно не попадает.
-// page({ hash, fetch, navigator }) запускает оба файла в отдельном vm-контексте и монтирует окно.
+// page({ hash, fetch, navigator, media, width }) запускает оба файла в отдельном vm-контексте и монтирует окно;
+// width — clientWidth любого блока (по умолчанию 360), media — запросы matchMedia, которые совпадают.
 'use strict';
 const vm = require('node:vm');
 const fs = require('node:fs');
@@ -43,7 +44,7 @@ class El {
   set hidden(v) { if (v) this.setAttribute('hidden', ''); else this.removeAttribute('hidden'); }
   get disabled() { return this.hasAttribute('disabled'); }
   set disabled(v) { if (v) this.setAttribute('disabled', ''); else this.removeAttribute('disabled'); }
-  get clientWidth() { return 360; }
+  get clientWidth() { return this.cw || 360; }
   append(...ns) { ns.forEach((n) => this.appendChild(typeof n === 'string' ? new Text(n) : n)); }
   appendChild(n) { return this.insertBefore(n, null); }
   insertBefore(n, ref) {
@@ -88,13 +89,14 @@ function page(o) {
   const doc = new El('#document');
   doc.body = doc.appendChild(new El('body'));
   doc.hidden = false;
-  doc.createElement = (t) => new El(t);
-  doc.createElementNS = (ns, t) => new El(t);
+  doc.createElement = (t) => Object.assign(new El(t), { cw: o.width });
+  doc.createElementNS = (ns, t) => Object.assign(new El(t), { cw: o.width });
   const loc = { origin: 'https://site.test', pathname: '/process/', search: '?r=tg', hash: o.hash || '' };
   const win = {
     document: doc, location: loc, navigator: o.navigator || {}, fetch: o.fetch, listeners: {},
     history: { replaceState: (s, t, url) => { loc.hash = url.startsWith('#') ? url : ''; } },
-    matchMedia: () => ({ matches: false, addEventListener() {} }),
+    // o.media — запросы, которые «совпадают», например ['(min-width: 900px)']
+    matchMedia: (q) => ({ matches: (o.media || []).includes(q), addEventListener() {} }),
     addEventListener(t, fn) { (this.listeners[t] || (this.listeners[t] = [])).push(fn); },
     requestAnimationFrame: () => 0, cancelAnimationFrame() {}, performance,
     setTimeout, clearTimeout, setInterval, clearInterval, Blob, FormData, URL, Response, console,
