@@ -181,16 +181,35 @@ test('окно от 900 px: пул с дорожками в координата
 });
 
 /* Мини-каскад process.css поверх fakedom: значение свойства у элемента — из совпавшего правила с наибольшей
-   специфичностью (при равной — из последнего). @media не различаются; селекторы с «:», «>», «[» пропущены. */
+   специфичностью (при равной — из последнего). Правило внутри @media действует, только если все его условия есть
+   в media страницы (как в page({ media })). Селекторы с «:», «>», «[» пропущены. */
 const CSS = fs.readFileSync(path.join(__dirname, 'process.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
-function cascade(doc) {
-  const rules = [];
-  for (const m of CSS.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-    if (!/(?:^|;)\s*(font|font-size|max-width|overflow|overflow-x|display|position|left|z-index|padding|fill|fill-opacity|opacity):/.test(m[2])) continue;
-    m[1].split(',').map((x) => x.trim()).filter((x) => /^[\w.\s-]+$/.test(x)).forEach((sel) => {
-      rules.push({ els: new Set(doc.querySelectorAll(sel)), spec: (sel.match(/\.[\w-]+/g) || []).length * 100 + (sel.match(/(?:^|\s)[a-z]/g) || []).length, body: m[2] });
-    });
+function rulesOf(css) {
+  const out = [];
+  const at = [];
+  const re = /([^{}]*)([{}])/g;
+  let m;
+  while ((m = re.exec(css))) {
+    const head = m[1].trim();
+    if (m[2] === '}') at.pop();
+    else if (head.startsWith('@')) at.push(head.replace(/^@media\s*/, ''));
+    else {
+      const end = css.indexOf('}', re.lastIndex);
+      out.push({ sel: head, body: css.slice(re.lastIndex, end), media: at.slice() });
+      re.lastIndex = end + 1;
+    }
   }
+  return out;
+}
+const RULES = rulesOf(CSS);
+const PROPS = /(?:^|;)\s*(font|font-size|max-width|overflow|overflow-x|display|position|left|bottom|z-index|padding|fill|fill-opacity|opacity|background|background-color|outline|outline-offset):/;
+function cascade(doc, media) {
+  const rules = [];
+  RULES.filter((r) => PROPS.test(r.body) && r.media.every((q) => (media || []).includes(q))).forEach((r) => {
+    r.sel.split(',').map((x) => x.trim()).filter((x) => /^[\w.\s-]+$/.test(x)).forEach((sel) => {
+      rules.push({ els: new Set(doc.querySelectorAll(sel)), spec: (sel.match(/\.[\w-]+/g) || []).length * 100 + (sel.match(/(?:^|\s)[a-z]/g) || []).length, body: r.body });
+    });
+  });
   const val = (el, prop) => {
     let best = null;
     rules.forEach((r) => {
@@ -206,9 +225,10 @@ function cascade(doc) {
   };
   return { val, size };
 }
-// ширина блока пула при ширине окна vw — по --pr-pw из process.css
-const PW = /--pr-pw: min\((\d+)px, calc\(100vw - (\d+)px\)\)/.exec(CSS);
-const wrapW = (vw) => Math.min(+PW[1], vw - +PW[2]);
+// ширина блока пула при ширине окна vw — по --pr-pw из process.css: не шире 1400 px, окна без полей и самого пула (--pr-w)
+const PW = /--pr-pw: min\((\d+)px, calc\(100vw - (\d+)px\), var\(--pr-w, \d+px\)\)/.exec(CSS);
+const wrapW = (vw, poolW) => Math.min(+PW[1], vw - +PW[2], poolW || Infinity);
+const WIDE = ['(min-width: 900px)'];
 const pageFetch = async (url) => (url.startsWith('fixtures/') ? new Response(fs.readFileSync(path.join(__dirname, url))) : new Response('{}', { status: 503 }));
 
 test('пул от 900 px: на экране текст шагов, событий, развилок, веток, очередей и дорожек — не меньше 12 px на 900, 1200 и 1440 px', async () => {
@@ -224,7 +244,7 @@ test('пул от 900 px: на экране текст шагов, событи�
       for (const [mode, p] of [['before', f.process], ['after', E.after(f.process, f.improve)]]) {
         P.api.setMode(mode);
         const L = E.pool(p);
-        const C = cascade(P.doc);
+        const C = cascade(P.doc, WIDE);
         assert.equal(P.$('.pr-svg').getAttribute('viewBox'), '0 0 ' + L.width + ' ' + L.height);
         // масштаб svg на экране: ширина (style.width, иначе атрибут width, но не шире max-width; 100 % — ширина блока) / viewBox
         const scale = (svg) => {
@@ -259,7 +279,7 @@ test('пул шире блока: при прокрутке вбок полос�
     P.api.setMode(mode);
     const L = E.pool(p);
     const D = di(E.toBpmn(p));
-    const C = cascade(P.doc);
+    const C = cascade(P.doc, WIDE);
     const wrap = P.$('.pr-wrap');
     const hd = P.$('.pr-hd');
     const svg = P.$('.pr-svg');
@@ -304,4 +324,61 @@ test('пул шире блока: при прокрутке вбок полос�
       assert.ok(at >= x && at + w <= x + width, 'прокрутка ' + x);
     }
   }
+});
+
+test('блок «Было/Стало» с цифрами: от 900 px — обычным потоком под пулом, уже — липкий у нижнего края', async () => {
+  for (const [media, width, pos] of [[WIDE, wrapW(1440), 'static'], [[], 360, 'sticky']]) {
+    const P = page({ fetch: pageFetch, media, width });
+    await until(() => P.api.state.name === 'sales');
+    const C = cascade(P.doc, media);
+    const bar = P.$('.pr-bar');
+    assert.equal(C.val(bar, 'position'), pos, media.join() || 'уже 900 px');
+    if (pos === 'sticky') assert.equal(parseFloat(C.val(bar, 'bottom')), 0);
+    // блок идёт в потоке после схемы (пул или вертикальная — в .pr-body)
+    assert.ok(P.root.children.indexOf(bar) > P.root.children.indexOf(P.$('.pr-body')));
+    assert.equal(P.$('.pr-wrap').classList.contains('pr-wide'), media.length > 0);
+    // в широком режиме поверх пула липнет только слой заголовков дорожек внутри него; карточка шага закрыта
+    const all = [P.root].concat(...['div', 'section', 'svg', 'p', 'details'].map((t) => P.root.querySelectorAll(t)));
+    const shown = (el) => { for (let e = el; e; e = e.parentNode) if (e.hidden) return false; return true; };
+    const pinned = all.filter((el) => shown(el) && /sticky|fixed/.test(C.val(el, 'position') || ''));
+    assert.deepEqual(pinned.map((el) => el.className), media.length ? ['pr-hd'] : ['pr-bar']);
+  }
+});
+
+test('пул от 900 px: сплошной фон окна и рамка по краю пула — в светлой и тёмной теме', async () => {
+  const P = page({ fetch: pageFetch, media: WIDE, width: wrapW(1440) });
+  await until(() => P.api.state.name === 'sales');
+  for (const [i, name] of [[0, 'sales'], [1, 'invoice']]) {
+    P.$$('.pr-ex button')[i].click();
+    await until(() => P.api.state.name === name);
+    const L = E.pool(fx(name).process);
+    const C = cascade(P.doc, WIDE);
+    const wrap = P.$('.pr-wrap');
+    const stage = P.$('.pr-stage');
+    // блок пула не шире пула: process.js отдаёт ширину пула в --pr-w, а --pr-pw берёт меньшее
+    assert.equal(wrap.style['--pr-w'], L.width + 'px');
+    assert.equal(wrapW(1440, L.width), Math.min(1376, L.width));
+    // фон — фон окна, сплошной: у блока, у ячейки со схемой и под заголовками дорожек; прозрачности нет
+    const bg = (el) => C.val(el, 'background') || C.val(el, 'background-color');
+    assert.equal(bg(wrap), 'var(--bg)');
+    assert.equal(bg(stage), 'var(--bg)');
+    assert.equal(C.val(P.$('.pr-hbk'), 'fill'), 'var(--bg)');
+    for (const el of [wrap, stage, P.$('.pr-hd'), P.$('.pr-svg')]) assert.equal(C.val(el, 'opacity'), null, el.className);
+    // рамка — по краю блока внутрь (на линии рамки пула .pr-pool), без сдвига раскладки
+    assert.equal(C.val(wrap, 'outline'), '1px solid var(--line-2)');
+    assert.equal(C.val(wrap, 'outline-offset'), '-1px');
+    const frame = P.$('.pr-svg .pr-pool');
+    assert.deepEqual(['x', 'y', 'width', 'height'].map((k) => +frame.getAttribute(k)), [0.5, 0.5, L.width - 1, L.height - 1]);
+  }
+  // уже 900 px ширина пула в блок не передаётся
+  const N = page({ fetch: pageFetch });
+  await until(() => N.api.state.name === 'sales');
+  assert.ok(!N.$('.pr-wrap').style['--pr-w']);
+  // --bg сайта (на стенде — dev.html) — сплошной цвет и в светлой теме, и в тёмной (по системе и по переключателю)
+  const html = fs.readFileSync(path.join(__dirname, 'dev.html'), 'utf8');
+  const themes = [/:root \{([^}]*)\}/, /:root:not\(\[data-theme="light"\]\) \{([^}]*)\}/, /:root\[data-theme="dark"\] \{([^}]*)\}/].map((re) => /--bg: ([^;]+);/.exec(re.exec(html)[1])[1].trim());
+  assert.equal(themes.length, 3);
+  themes.forEach((c) => assert.match(c, /^#([0-9a-f]{3}|[0-9a-f]{6})$/i, '--bg непрозрачный: ' + c));
+  assert.notEqual(themes[0], themes[1]);
+  assert.equal(themes[1], themes[2]);
 });

@@ -81,9 +81,14 @@
 .pr-dot.pr-s { fill: var(--c, var(--ink)); fill-opacity: 1; }
 .pr-more { font-size: 9.5px; font-weight: 600; fill: var(--red); }
 /* от 900 px: пул BPMN шире колонки текста — по центру колонки, в масштабе 1:1 (весь текст пула — 12 px);
-   длинный процесс прокручивается вбок, а полоса процесса и заголовки дорожек (.pr-hd) стоят слева поверх схемы */
-.pr-wrap.pr-wide { --pr-pw: min(1400px, calc(100vw - 64px)); width: var(--pr-pw); margin-left: calc((100% - var(--pr-pw)) / 2); overflow-x: auto; }
-.pr-wide .pr-stage { display: grid; width: max-content; margin: 0 auto; }
+   длинный процесс прокручивается вбок, а полоса процесса и заголовки дорожек (.pr-hd) стоят слева поверх схемы.
+   Блок не шире пула (--pr-w — ширина пула из process.js), у него сплошной фон окна и рамка по краю пула:
+   выходя за карточку сайта, пул не пропускает её края, а при прокрутке рамка замыкает видимую часть. */
+.pr-wrap.pr-wide {
+  --pr-pw: min(1400px, calc(100vw - 64px), var(--pr-w, 1400px)); width: var(--pr-pw); margin-left: calc((100% - var(--pr-pw)) / 2); overflow-x: auto;
+  background: var(--bg); outline: 1px solid var(--line-2); outline-offset: -1px;
+}
+.pr-wide .pr-stage { display: grid; width: max-content; margin: 0 auto; background: var(--bg); }
 .pr-wide .pr-stage > svg { grid-area: 1 / 1; }
 .pr-wide .pr-svg { max-width: none; }
 .pr-hd { display: none; }
@@ -103,6 +108,8 @@
   position: sticky; bottom: 0; z-index: 3; background: var(--bg); margin: 10px -16px 0; padding: 8px 16px 10px;
   border-top: 1px solid var(--line);
 }
+/* от 900 px (тот же порог, что у пула) — под пулом обычным потоком: липкий низ прикрывал нижние дорожки */
+@media (min-width: 900px) { .pr-bar { position: static; } }
 .pr-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .pr-seg { display: inline-flex; padding: 3px; border-radius: 999px; background: var(--soft); border: 1px solid var(--line); }
 .pr-seg button { border: 0; background: none; padding: 5px 14px; border-radius: 999px; font-size: 13.5px; color: var(--muted); transition: background .25s, color .25s; }

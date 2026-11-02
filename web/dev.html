@@ -28,6 +28,13 @@
   .dev h1 { font-size: 12px; font-weight: 600; margin: 0; letter-spacing: .04em; text-transform: uppercase; }
   .dev button { font: inherit; color: inherit; background: var(--soft); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; cursor: pointer; }
   .lead { font-size: 15px; line-height: 1.45; margin: 0 0 12px; }
+  /* ?card=1 — как на сайте: окно в карточке колонки 1110 px со светлым фоном на более тёмной странице
+     (пул от 900 px выходит за карточку): видно, не просвечивают ли края карточки сквозь пул. */
+  :root { --page: #e6e6e0; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --page: #08090a; } }
+  :root[data-theme="dark"] { --page: #08090a; }
+  html.card, html.card body { background: var(--page); }
+  html.card main { box-sizing: border-box; max-width: 1110px; margin: 24px auto; padding: 20px 32px 40px; background: var(--bg); border-radius: 20px; }
 </style>
 <link rel="stylesheet" href="process.css">
 </head>
@@ -45,6 +52,7 @@
 <script>
   (function () {
     var q = new URLSearchParams(location.search);
+    if (q.get('card') === '1') document.documentElement.classList.add('card');
     var themes = ['auto', 'light', 'dark'];
     var names = { auto: 'авто', light: 'светлая', dark: 'тёмная' };
     var t = themes.indexOf(q.get('theme')) >= 0 ? q.get('theme') : 'auto';

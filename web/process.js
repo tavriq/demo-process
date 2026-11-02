@@ -275,6 +275,8 @@ function mount(root, opts) {
     svg.setAttribute('viewBox', '0 0 ' + lay.width + ' ' + lay.height);
     svg.setAttribute('width', lay.width);
     svg.setAttribute('height', lay.height);
+    // ширина пула — блоку: фон и рамка по пулу (--pr-pw)
+    wrap.style.setProperty('--pr-w', st.wide ? lay.width + 'px' : '');
     drawLanes(res);
     gE.textContent = '';
     lay.edges.forEach((e) => {
