@@ -337,6 +337,8 @@ test('блок «Было/Стало» с цифрами: от 900 px — обы
     const bar = P.$('.pr-bar');
     assert.equal(C.val(bar, 'position'), pos, media.join() || 'уже 900 px');
     if (pos === 'sticky') assert.equal(parseFloat(C.val(bar, 'bottom')), 0);
+    // от 900 px — без своей подложки и отрицательных полей: край строки — по краю секций под ней, в любой карточке сайта
+    assert.deepEqual([C.val(bar, 'background'), C.val(bar, 'padding')], pos === 'static' ? ['none', '8px 0 0'] : ['var(--bg)', '8px 16px 10px']);
     // блок идёт в потоке после схемы (пул или вертикальная — в .pr-body)
     assert.ok(P.root.children.indexOf(bar) > P.root.children.indexOf(P.$('.pr-body')));
     assert.equal(P.$('.pr-wrap').classList.contains('pr-wide'), media.length > 0);
@@ -744,6 +746,7 @@ test('пул шире блока: у правого края — узкое за
   assert.equal(at(Math.round((SW - wrap.clientWidth) / 2), SW), true, 'посередине — видна');
   assert.equal(at(SW - wrap.clientWidth, SW), false, 'докрутили — гаснет');
   assert.equal(at(0, wrap.clientWidth), false, 'пул весь в блоке — подсказки нет');
+  assert.ok(!bar.classList.contains('pr-sx'), 'пул весь в блоке — строка не держит место под подсказку: «тап по шагу» у правого края');
   // после смены вида (новый пул, прокрутка в начале) — снова видна
   wrap.scrollWidth = SW;
   wrap.scrollLeft = 0;

@@ -149,8 +149,9 @@
   position: sticky; bottom: 0; z-index: 3; background: var(--bg); margin: 10px -16px 0; padding: 8px 16px 10px;
   border-top: 1px solid var(--line);
 }
-/* от 900 px (тот же порог, что у пула) — под пулом обычным потоком: липкий низ прикрывал нижние дорожки */
-@media (min-width: 900px) { .pr-bar { position: static; } }
+/* от 900 px (тот же порог, что у пула) — под пулом обычным потоком: липкий низ прикрывал нижние дорожки;
+   фон и поля — как у секций ниже: окно на сайте может лежать в карточке другого цвета и с другими полями */
+@media (min-width: 900px) { .pr-bar { position: static; background: none; margin: 10px 0 0; padding: 8px 0 0; } }
 .pr-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .pr-seg { display: inline-flex; padding: 3px; border-radius: 999px; background: var(--soft); border: 1px solid var(--line); }
 .pr-seg button { border: 0; background: none; padding: 5px 14px; border-radius: 999px; font-size: 13.5px; color: var(--muted); transition: background .25s, color .25s; }
@@ -176,7 +177,7 @@
 .pr-sec > summary::-webkit-details-marker { display: none; }
 .pr-sec > summary::after { content: "+"; color: var(--muted); font-weight: 400; }
 .pr-sec[open] > summary::after { content: "−"; }
-.pr-fields { display: grid; gap: 8px; margin-top: 10px; }
+.pr-fields { display: grid; gap: 8px; margin-top: 10px; max-width: 560px; }
 .pr-f { display: grid; grid-template-columns: 1fr 86px; align-items: center; gap: 4px 10px; font-size: 13.5px; }
 .pr-f small, .pr-tag { display: block; font-size: 11px; color: var(--muted); }
 .pr-in {
@@ -219,6 +220,11 @@
 .pr-lv { display: block; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
 .pr-lv i { display: block; height: 100%; background: var(--red); transform-origin: left; transform: scaleX(0); }
 .pr-row.pr-left { justify-content: flex-start; margin-top: 10px; }
+/* подписи в строке с кнопкой — по её центру, а не на 6 px ниже; кнопка — не вплотную к полю */
+.pr-row > .pr-small { margin: 0; }
+.pr-ans + .pr-row { margin-top: 8px; }
+/* интервью над схемой — отчерчено от заголовка процесса */
+.pr-iv + .pr-body { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 4px; }
 .pr-f small.pr-ans-t { color: var(--ok); }
 
 /* отчёт */

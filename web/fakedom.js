@@ -102,6 +102,8 @@ function page(o) {
     setTimeout, clearTimeout, setInterval, clearInterval, Blob, FormData, URL, Response, console,
   };
   if (o.MediaRecorder) win.MediaRecorder = o.MediaRecorder;
+  // o.Intl — своя замена Intl (браузер без данных локали ru)
+  if (o.Intl) win.Intl = o.Intl;
   win.window = win.self = win;
   const ctx = vm.createContext(win);
   ['engine.js', 'process.js'].forEach((f) => vm.runInContext(fs.readFileSync(path.join(__dirname, f), 'utf8'), ctx, { filename: f }));

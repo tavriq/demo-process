@@ -29,11 +29,18 @@ const STEP = { extract: 'Разбор', improve: 'Улучшения', stt: 'Р�
 let uid = 0;
 
 // до 9 знаков: 5,2499999999 из итераций цепи Маркова — это 5,25
-const nf = (min, max) => { const f = new Intl.NumberFormat('ru-RU', { minimumFractionDigits: min, maximumFractionDigits: max }); return (v) => f.format(Math.round(v * 1e9) / 1e9); };
+// без данных локали ru Intl даёт «40.00» — тогда en с разделителями ru
+const RU = /^ru/.test(new Intl.NumberFormat('ru-RU').resolvedOptions().locale);
+const nf = (min, max) => {
+  const f = new Intl.NumberFormat(RU ? 'ru-RU' : 'en-US', { minimumFractionDigits: min, maximumFractionDigits: max });
+  return (v) => { const t = f.format(Math.round(v * 1e9) / 1e9); return RU ? t : t.replace(/[,.]/g, (c) => (c > ',' ? ',' : '\u00a0')); };
+};
 const n0 = nf(0, 0);
 const n1 = nf(1, 1);
 const n2 = nf(2, 2);
 const nv = nf(0, 1);
+// рубли бюджета: копейки — только когда они есть
+const rub = (v) => (Math.abs(v - Math.round(v)) < 0.005 ? n0(v) : n2(v)) + ' ₽';
 const sec = (ms) => n1(ms / 1000) + ' с';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -102,11 +109,11 @@ function mount(root, opts) {
   // заголовки дорожек — закреплены слева (sticky)
   const hd = s('svg', { class: 'pr-hd', 'aria-hidden': 'true' });
   const wrap = h('div', { class: 'pr-wrap' }, [msg, h('div', { class: 'pr-stage' }, [hd, svg])]);
-  // у конца пула подсказка прокрутки гаснет: затемнение края (.pr-fin) и «прокрутите вбок →» в строке под пулом (.pr-sx)
+  // «прокрутите вбок →» (.pr-sx) — только у пула шире блока; у конца гаснет с затемнением края (.pr-fin)
   const fin = () => {
     const end = wrap.scrollLeft + wrap.clientWidth >= wrap.scrollWidth - 2;
     wrap.classList.toggle('pr-fin', end);
-    bar.classList.toggle('pr-sx', wrap.classList.contains('pr-wide'));
+    bar.classList.toggle('pr-sx', wrap.scrollWidth > wrap.clientWidth + 2);
     bar.classList.toggle('pr-sx-end', end);
   };
   wrap.addEventListener('scroll', fin);
@@ -665,7 +672,7 @@ function mount(root, opts) {
     try {
       const x = await api('status');
       on = x.live !== false;
-      if (iv.view === 'start') ivInfo.textContent = on ? 'осталось на сегодня ' + n2(Math.max(0, (x.budget_rub || 0) - (x.spent_rub || 0))) + ' ₽ из ' + n0(x.budget_rub || 15) : ERR.offline;
+      if (iv.view === 'start') ivInfo.textContent = on ? 'осталось на сегодня ' + rub(Math.max(0, (x.budget_rub || 0) - (x.spent_rub || 0))) + ' из ' + rub(x.budget_rub || 15) : ERR.offline;
     } catch (e) {
       if (iv.view === 'start') ivInfo.textContent = ERR.unavailable;
     }
@@ -694,7 +701,8 @@ function mount(root, opts) {
   function lock(on, label) {
     iv.busy = on;
     [send, mic, enough, ta].concat(Array.from(topics.children)).forEach((b) => { b.disabled = on; });
-    if (!on) enough.disabled = iv.count < 3;
+    // снятая блокировка уносит и таймер: «Готовлю первый вопрос… 0,0 с» не остаётся под ошибкой
+    if (!on) { enough.disabled = iv.count < 3; ivInfo.textContent = ''; }
     clearInterval(tick);
     if (!on) return;
     const t0 = Date.now();
@@ -717,7 +725,7 @@ function mount(root, opts) {
     if (!topic && !text) { ivFail({ message: 'Выберите подсказку или опишите процесс парой слов.' }); return; }
     lock(true, 'Готовлю первый вопрос');
     let r;
-    try { r = await api('interviews', { topic, text: topic ? null : text }); } catch (e) { lock(false); ivFail(e); return; }
+    try { r = await api('interviews', { topic, text: topic ? null : text }); } catch (e) { lock(false); ivFail(e); status(); return; }
     lock(false);
     Object.assign(iv, { id: r.id, count: 0 });
     Object.assign(st, { ans: [], A0: E.assume(), A: E.assume(), edited: {}, rep: null, data: null, mode: 'before' });
@@ -727,7 +735,9 @@ function mount(root, opts) {
     top.hidden = rep.hidden = sum.hidden = true;
     setHash(null);
     closeSheet();
-    gN.textContent = '';
+    gN.textContent = gL.textContent = hd.textContent = '';
+    wrap.classList.remove('pr-wide');
+    wrap.style.setProperty('--pr-w', '');
     svg.setAttribute('hidden', '');
     cur = sim = null;
     drawDots();
@@ -739,9 +749,10 @@ function mount(root, opts) {
     buildAsm();
     // интервью — над схемой
     root.insertBefore(ivSec, body);
+    fin();
     clearTa();
     ask(r.question);
-    ivInfo.textContent = r.budget_left_rub != null ? 'осталось на сегодня ' + n2(r.budget_left_rub) + ' ₽' : '';
+    ivInfo.textContent = r.budget_left_rub != null ? 'осталось на сегодня ' + rub(r.budget_left_rub) : '';
     ivSec.scrollIntoView({ behavior: reduced() ? 'auto' : 'smooth', block: 'start' });
   }
 

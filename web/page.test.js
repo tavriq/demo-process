@@ -10,6 +10,7 @@ const { page, until } = require('./fakedom.js');
 const fx = (n) => JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', n + '.json'), 'utf8'));
 const sp = (s) => String(s).replace(/[\s  ]+/g, ' ').trim();
 const n0 = (v) => sp(new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(Math.round(v * 1e9) / 1e9));
+const n2 = (v) => new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
 
 /* Сервер по контракту API на фикстурах interview-*.json; log — запросы, sttFail — сколько записей «не расслышать». */
 function server(o) {
@@ -228,4 +229,62 @@ test('нет микрофона или нет доступа — остаётс�
   assert.ok(!P2.$('.pr-iv textarea').hidden && !P2.$('.pr-iv textarea').disabled);
   await say(P2, 'Заявки приходят на почту');
   assert.equal(P2.api.iv.count, 1);
+});
+
+// строка бюджета под интервью — последний .pr-small блока
+const info = (P) => sp(P.$$('.pr-iv .pr-small').pop().textContent);
+
+test('старт интервью от 900 px: пул прошлого примера убран целиком — без заголовков дорожек и ширины пула; бюджет — без «,00» и с ₽ у обеих сумм', async () => {
+  const WIDE = ['(min-width: 900px)'];
+  const P = page({ fetch: server().fetch, media: WIDE, width: 1200 });
+  await until(() => P.api.state.name === 'sales' && /из/.test(info(P)));
+  assert.equal(info(P), 'осталось на сегодня 12 ₽ из 15 ₽');
+  const wrap = P.$('.pr-wrap');
+  assert.ok(wrap.classList.contains('pr-wide') && P.$('.pr-hd').children.length > 0 && wrap.style['--pr-w']);
+  P.$('.pr-topics button').click();
+  await until(() => P.api.iv.id);
+  assert.ok(!wrap.classList.contains('pr-wide'), 'до первого ответа пул не держит ширину прошлого примера');
+  assert.equal(P.$('.pr-hd').children.length, 0, 'заголовков дорожек прошлого примера нет');
+  assert.equal(P.$$('.pr-svg .pr-lb').length, 0);
+  assert.equal(wrap.style['--pr-w'], '');
+  assert.ok(!P.$('.pr-msg').hidden);
+  assert.equal(info(P), 'осталось на сегодня ' + sp(n2(fx('interview-start').budget_left_rub)) + ' ₽');
+  await say(P, fx('interview-answers')[0].answer_text);
+  assert.ok(wrap.classList.contains('pr-wide') && P.$('.pr-hd').children.length > 0, 'после ответа — снова пул');
+});
+
+test('браузер без данных локали ru (Intl отдаёт en): числа окна — как в ru, с пробелом в разрядах и запятой', async () => {
+  const en = { NumberFormat: function (l, o) { return new Intl.NumberFormat('en-US', o); } };
+  const P = page({ fetch: server().fetch, Intl: en });
+  const R = page({ fetch: server().fetch });
+  await until(() => P.api.state.name === 'sales' && R.api.state.name === 'sales' && /из/.test(info(P)) && /из/.test(info(R)));
+  const nums = (X) => X.$$('.pr-num').map((n) => n.textContent);
+  assert.deepEqual(nums(P), nums(R));
+  assert.ok(nums(R).some((t) => /\d\u00a0\d{3}/.test(t)), 'в примере есть число с разрядами: ' + nums(R));
+  assert.equal(P.$('.pr-meta').textContent, R.$('.pr-meta').textContent);
+  assert.match(R.$('.pr-meta').textContent, /\d,\d/);
+  assert.equal(info(P), info(R));
+});
+
+test('ошибка на старте и при ответе: под ошибкой — не застывший таймер, а бюджет (на старте) или ничего', async () => {
+  const srv = server();
+  const busy = { start: true, answer: true };
+  const fetch = async (url, init) => {
+    const m = (init && init.method) || 'GET';
+    if (busy.start && m === 'POST' && url.endsWith('/interviews')) return new Response(JSON.stringify({ code: 'busy', message: 'Сервис занят.' }), { status: 429 });
+    if (busy.answer && url.endsWith('/answers')) return new Response(JSON.stringify({ code: 'busy', message: 'Сервис занят.' }), { status: 429 });
+    return srv.fetch(url, init);
+  };
+  const P = page({ fetch });
+  await until(() => P.api.state.name === 'sales' && /из/.test(info(P)));
+  P.$('.pr-topics button').click();
+  await until(() => !P.$('.pr-iv .pr-err').hidden && /из/.test(info(P)));
+  assert.equal(info(P), 'осталось на сегодня 12 ₽ из 15 ₽');
+  busy.start = false;
+  P.$('.pr-topics button').click();
+  await until(() => P.api.iv.id);
+  P.$('.pr-iv textarea').value = 'Заявки приходят на почту';
+  P.$('.pr-iv .pr-row .pr-btn').click();
+  await until(() => !P.$('.pr-iv .pr-err').hidden);
+  assert.equal(info(P), '', 'после ошибки ответа — без «Разбираю ответ… N с»');
 });
