@@ -725,30 +725,36 @@ test('пул от 900 px — как обложка до мелочей: поло
   for (const [t, v] of themes()) assert.ok(contrast(hex(v.muted), hex(v.bg)) >= 4.5, t + ': «да/нет» ' + contrast(hex(v.muted), hex(v.bg)).toFixed(2));
 });
 
-test('пул шире блока: у правого края — узкое затемнение под фон и плашка «→ прокрутите» 12 px в нижнем углу; докрутили до конца или пул весь в блоке — гаснут; без анимации при reduced-motion', async () => {
+test('пул шире блока: у правого края — узкое затемнение под фон, «прокрутите вбок →» — в строке под пулом, схему не закрывает; докрутили до конца или пул весь в блоке — гаснут; без анимации при reduced-motion', async () => {
   const P = page({ fetch: pageFetch, media: WIDE, width: wrapW(1440) });
   await until(() => P.api.state.name === 'sales');
   const L = E.pool(fx('sales').process);
   const wrap = P.$('.pr-wrap');
-  const at = (left, scroll) => { wrap.scrollWidth = scroll; wrap.scrollLeft = left; wrap.fire('scroll'); return wrap.classList.contains('pr-fin'); };
+  const bar = P.$('.pr-bar');
+  // видна ли подсказка: затемнение края (нет .pr-fin) и строка под пулом (.pr-sx без .pr-sx-end) — вместе
+  const shown = () => {
+    const fade = !wrap.classList.contains('pr-fin'), line = bar.classList.contains('pr-sx') && !bar.classList.contains('pr-sx-end');
+    assert.equal(fade, line, 'затемнение и строка гаснут вместе');
+    return line;
+  };
+  const at = (left, scroll) => { wrap.scrollWidth = scroll; wrap.scrollLeft = left; wrap.fire('scroll'); return shown(); };
   const SW = L.width - L.head;
   assert.ok(SW > wrap.clientWidth, 'sales шире блока');
-  assert.equal(at(0, SW), false, 'в начале — подсказка видна');
-  assert.equal(at(Math.round((SW - wrap.clientWidth) / 2), SW), false, 'посередине — видна');
-  assert.equal(at(SW - wrap.clientWidth, SW), true, 'докрутили — гаснет');
-  assert.equal(at(0, wrap.clientWidth), true, 'пул весь в блоке — подсказки нет');
+  assert.equal(at(0, SW), true, 'в начале — подсказка видна');
+  assert.equal(at(Math.round((SW - wrap.clientWidth) / 2), SW), true, 'посередине — видна');
+  assert.equal(at(SW - wrap.clientWidth, SW), false, 'докрутили — гаснет');
+  assert.equal(at(0, wrap.clientWidth), false, 'пул весь в блоке — подсказки нет');
   // после смены вида (новый пул, прокрутка в начале) — снова видна
   wrap.scrollWidth = SW;
   wrap.scrollLeft = 0;
   P.api.setMode('after');
-  assert.ok(!wrap.classList.contains('pr-fin'));
-  const hint = /\.pr-wide \.pr-stage::after \{([^}]*)\}/.exec(CSS);
-  assert.ok(hint, 'подсказка — ::after ячейки пула');
-  const v = varsOf(hint[1].replace(/(^|;)\s*([a-z-]+):/g, '$1 --$2:'));
-  assert.equal(v.content, '"→ прокрутите"');
-  assert.deepEqual([v['font-size'], v.position, v['pointer-events'], v['justify-self'], v['align-self']], ['12px', 'sticky', 'none', 'end', 'end']);
-  assert.match(v.right, /^\d+px$/);
-  assert.equal(v.background, 'var(--bg)', 'плашка — на фоне окна');
+  assert.equal(shown(), true);
+  // строка — в подсказке под пулом, рядом с «тап по шагу»: поверх схемы ничего нет
+  const more = P.$('.pr-bar .pr-hint .pr-scroll');
+  assert.ok(more, '«прокрутите» — в строке под пулом');
+  assert.equal(more.textContent, ' · прокрутите вбок →');
+  assert.match(CSS, /\.pr-scroll \{ display: none;[^}]*\}\n\.pr-sx \.pr-scroll \{ display: inline; \}\n\.pr-sx\.pr-sx-end \.pr-scroll \{ opacity: 0; \}/);
+  assert.ok(!/\.pr-stage::after/.test(CSS), 'плашки поверх пула нет');
   // затемнение — узкая полоса ::before: крайние шаги и рёбра к ним видны
   const fade = /\.pr-wide \.pr-stage::before \{([^}]*)\}/.exec(CSS);
   assert.ok(fade, 'затемнение — ::before ячейки пула');
@@ -756,9 +762,9 @@ test('пул шире блока: у правого края — узкое за
   assert.ok(parseFloat(f.width) <= 32, 'затемнение не шире 32 px: ' + f.width);
   assert.equal(f.background, 'linear-gradient(to right, transparent, var(--bg))', 'затемнение — под фон окна, без сплошной части');
   assert.deepEqual([f.position, f['pointer-events'], f['justify-self']], ['sticky', 'none', 'end']);
-  assert.match(CSS, /\.pr-wide\.pr-fin \.pr-stage::before, \.pr-wide\.pr-fin \.pr-stage::after \{ opacity: 0; visibility: hidden; \}/);
-  // переход гасит общий reduced-motion: .pr *::after без transition
+  assert.match(CSS, /\.pr-wide\.pr-fin \.pr-stage::before \{ opacity: 0; visibility: hidden; \}/);
+  // переход гасит общий reduced-motion
   assert.match(CSS, /@media \(prefers-reduced-motion: reduce\) \{\s*\.pr \*, \.pr \*::before, \.pr \*::after \{ animation: none !important; transition: none !important; \}/);
-  // уже 900 px подсказки нет: правило — только под .pr-wide
-  assert.ok(!/(^|\})\s*\.pr-stage::(after|before)/.test(CSS));
+  // уже 900 px затемнения нет: правило — только под .pr-wide
+  assert.ok(!/(^|\})\s*\.pr-stage::before/.test(CSS));
 });

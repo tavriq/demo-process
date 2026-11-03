@@ -134,19 +134,14 @@
   .pr-wide .pr-box { fill: color-mix(in srgb, var(--c) var(--pr-tint), var(--bg)); }
   .pr-wide .pr-hot .pr-box { fill: color-mix(in srgb, var(--red) var(--pr-tint), var(--bg)); }
 }
-/* пул шире блока: у правого края — узкое затемнение под фон (::before) и плашка «→ прокрутите» в нижнем углу (::after),
-   в отступе нижней дорожки: крайние шаги не закрыты; докрутили до конца (.pr-fin) — гаснут */
+/* пул шире блока: у правого края — узкое затемнение под фон, «прокрутите вбок →» — в строке под пулом (.pr-scroll):
+   схему подсказка не закрывает; докрутили до конца (.pr-fin, .pr-sx-end) — гаснут */
 .pr-wide .pr-stage::before {
   content: ""; grid-area: 1 / 1; justify-self: end; position: sticky; right: 1px; z-index: 2; pointer-events: none;
   width: 28px; background: linear-gradient(to right, transparent, var(--bg)); transition: opacity .3s, visibility .3s;
   margin: 1px 0; border-radius: 0 6px 6px 0; /* внутри рамки пула: обводка блока остаётся видна */
 }
-.pr-wide .pr-stage::after {
-  content: "→ прокрутите"; grid-area: 1 / 1; justify-self: end; align-self: end; position: sticky; right: 8px; z-index: 2; pointer-events: none;
-  margin-bottom: 7px; padding: 3px 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg);
-  font-size: 12px; line-height: 1.2; font-weight: 600; color: var(--muted); transition: opacity .3s, visibility .3s;
-}
-.pr-wide.pr-fin .pr-stage::before, .pr-wide.pr-fin .pr-stage::after { opacity: 0; visibility: hidden; }
+.pr-wide.pr-fin .pr-stage::before { opacity: 0; visibility: hidden; }
 .pr-lane.pr-hot .pr-lt { fill: var(--red); }
 
 /* счётчики */
@@ -162,6 +157,9 @@
 .pr-seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
 .pr-seg button:disabled { opacity: .4; cursor: default; }
 .pr-hint { font-size: 12px; color: var(--muted); text-align: right; }
+.pr-scroll { display: none; font-weight: 600; transition: opacity .3s; }
+.pr-sx .pr-scroll { display: inline; }
+.pr-sx.pr-sx-end .pr-scroll { opacity: 0; }
 .pr-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 8px; }
 .pr-stat { min-width: 0; }
 .pr-num { font-size: 21px; font-weight: 680; letter-spacing: -.02em; font-variant-numeric: tabular-nums; line-height: 1.1; white-space: nowrap; }

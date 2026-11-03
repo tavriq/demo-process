@@ -102,8 +102,13 @@ function mount(root, opts) {
   // заголовки дорожек — закреплены слева (sticky)
   const hd = s('svg', { class: 'pr-hd', 'aria-hidden': 'true' });
   const wrap = h('div', { class: 'pr-wrap' }, [msg, h('div', { class: 'pr-stage' }, [hd, svg])]);
-  // у конца пула подсказка прокрутки гаснет
-  const fin = () => wrap.classList.toggle('pr-fin', wrap.scrollLeft + wrap.clientWidth >= wrap.scrollWidth - 2);
+  // у конца пула подсказка прокрутки гаснет: затемнение края (.pr-fin) и «прокрутите вбок →» в строке под пулом (.pr-sx)
+  const fin = () => {
+    const end = wrap.scrollLeft + wrap.clientWidth >= wrap.scrollWidth - 2;
+    wrap.classList.toggle('pr-fin', end);
+    bar.classList.toggle('pr-sx', wrap.classList.contains('pr-wide'));
+    bar.classList.toggle('pr-sx-end', end);
+  };
   wrap.addEventListener('scroll', fin);
   const dl0 = h('p', { class: 'pr-dl', 'aria-hidden': 'true' }, [h('i'), 'заявка в пути ·', h('i', { class: 'pr-q' }), 'ждёт у шага']);
   const nw = () => Math.round(Math.max(300, Math.min(520, wrap.clientWidth || 360)));
@@ -118,7 +123,7 @@ function mount(root, opts) {
     stat[k] = { num: h('div', { class: 'pr-num', text: '—' }), diff: h('div', { class: 'pr-diff' }), val: null, raf: 0 };
     return h('div', { class: 'pr-stat' }, [stat[k].num, h('div', { class: 'pr-unit', text: u }), stat[k].diff]);
   }));
-  const bar = h('div', { class: 'pr-bar' }, [h('div', { class: 'pr-row' }, [seg, h('span', { class: 'pr-hint', text: 'тап по шагу — подробности' })]), stats]);
+  const bar = h('div', { class: 'pr-bar' }, [h('div', { class: 'pr-row' }, [seg, h('span', { class: 'pr-hint' }, ['тап по шагу — подробности', h('span', { class: 'pr-scroll', text: ' · прокрутите вбок →' })])]), stats]);
   const sum = h('p', { class: 'pr-sum', hidden: true });
 
   const asmBox = h('div', { class: 'pr-fields' });
