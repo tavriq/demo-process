@@ -13,7 +13,7 @@ const SYS = 'sys';
 const SYS_NAME = 'Система';
 const OVER_DAYS = 20;
 
-/* Числа ≥ 0 (день и часы человека > 0), иначе по умолчанию; minutes / wait_hours — по шагам из ответов. */
+/* Числа ≥ 0, иначе по умолчанию; minutes / wait_hours — по шагам из ответов. */
 function assume(a) {
   a = a || {};
   const r = {};
@@ -74,7 +74,7 @@ function reach(by, from) {
   return seen;
 }
 
-/* Рёбра с долями: ветка-петля (из цели достижимо само решение) — loopShare, прочие — поровну. */
+/* Доли рёбер: ветка-петля — loopShare, прочие — поровну. */
 function edges(proc, A) {
   A = assume(A);
   const by = index(proc);
@@ -247,8 +247,7 @@ function after(proc, improve, overrides, assumptions) {
   return Object.assign({}, proc, { steps: kept, roles, removed: Object.keys(gone), actions: acts });
 }
 
-/* Отчёт (SPEC-analyst): Было → Стало, два шага с большими потерями (часы × ставка), первым — automate,
-   который один даёт больше ₽. Минуты шага — из ответа, если число есть (цитата — из стенограммы). */
+/* Отчёт (SPEC-analyst): Было → Стало, два шага с наибольшими потерями, первым — automate с наибольшей экономией ₽. */
 function report(proc, improve, overrides, assumptions, answered) {
   const A = assume(assumptions);
   const p = withAnswers(proc, A);
@@ -304,7 +303,7 @@ function wrap(text, max, lines) {
   return out;
 }
 
-/* Обход из старта: порядок, обратные рёбра (петли), рёбра f1…fN и ранги — для layout и pool. */
+/* Обход из старта: порядок, обратные рёбра, рёбра f1…fN и ранги. */
 function graph(proc) {
   const by = index(proc);
   const state = {};
@@ -346,7 +345,7 @@ function ranks(proc, E) {
   return rank;
 }
 
-/* По рангам сверху вниз, в ряд до 3 мест (решение — 2). Обратные рёбра — справа, обходы — слева. */
+/* По рангам сверху вниз, в ряд до 3 мест. Обратные рёбра — справа, обходы — слева. */
 function layout(proc, opts) {
   const W = (opts && opts.width) || 360;
   const { by, order, E, rank } = graph(proc);
@@ -482,10 +481,9 @@ function simplify(pts) {
 /* ---------- пул BPMN: дорожки ролей слева направо — экран от 900 px и .bpmn ---------- */
 
 // текст пула 12 px: cw — ширина буквы с запасом, lh — шаг строки
-const PG = { head: 32, tw: 110, gw: 36, ew: 30, lw: 84, gap: 24, tr: 6, mTop: 18, mBot: 34, cw: 7, lh: 14 };
+const PG = { head: 32, tw: 110, gw: 36, ew: 30, lw: 84, gap: 24, tr: 6, tv: 16, mTop: 18, mBot: 34, cw: 7, lh: 14 };
 
-/* Столбец — ранг (как в layout), ряд — дорожка роли (под-ряд, если у роли в ранге несколько шагов). Вертикали рёбер
-   идут в зазорах между столбцами, горизонтали — в полосах между рядами: шаги они не пересекают. */
+/* Столбец — ранг, ряд — дорожка роли (под-ряд на шаг в ранге). Рёбра — в зазорах и полосах, через шаги не идут. */
 function pool(proc) {
   const { by, order, E, rank } = graph(proc);
   const roles = proc.roles.filter((r) => proc.steps.some((s) => roleOf(s) === r.id));
@@ -510,7 +508,7 @@ function pool(proc) {
         n.sh = Math.max(56, n.lines.length * PG.lh + 14);
         n.up = n.sh / 2;
       } else {
-        // подпись события и развилки — над фигурой (у авто — над значком): справа выходят рёбра, снизу — возвраты
+        // подпись события и развилки — над фигурой: справа выходят рёбра, снизу — возвраты
         n.sw = n.sh = s.kind === 'decision' ? PG.gw : PG.ew;
         n.lines = wrap(s.name, Math.floor(PG.lw / PG.cw), 9);
         n.bw = Math.max(n.sw, 2 * Math.ceil(Math.max.apply(null, n.lines.map((l) => l.length)) * PG.cw / 2));
@@ -522,7 +520,7 @@ function pool(proc) {
     return { r, first, last: rows.length - 1, ids };
   });
 
-  // Маршрут в символах: G — дорожка в зазоре после столбца, H — в полосе над рядом, номер дорожки — третьим.
+  // Маршрут: G — зазор после столбца, H/F — полоса над/под рядом (в дорожке ряда), третьим — номер дорожки.
   const plans = E.map((e) => {
     const u = nodes[e.from];
     const v = nodes[e.to];
@@ -531,12 +529,12 @@ function pool(proc) {
     if (e.back) {
       const xu = ['C', u.id];
       const xv = ['C', v.id];
-      const h1 = ['H', u.row + 1, 0];
+      const h1 = ['F', u.row, 0];
       const g = ['G', v.col, 0];
       const p = [[xu, ['B', u.id]], [xu, h1]];
       if (u === v) return p.concat([[g, h1], [g, yu], [['R', u.id], yu]]);
       if (u.row === v.row) return p.concat([[xv, h1], [xv, ['B', v.id]]]);
-      const h2 = ['H', v.row + 1, 0];
+      const h2 = ['F', v.row, 0];
       return p.concat([[g, h1], [g, h2], [xv, h2], [xv, ['B', v.id]]]);
     }
     const R = [['R', u.id], yu];
@@ -547,15 +545,15 @@ function pool(proc) {
     const g1 = ['G', u.col, 0];
     if (v.col === u.col + 1) return [R, [g1, yu], [g1, yv], L];
     const g2 = ['G', v.col - 1, 0];
-    const h = ['H', v.row > u.row ? v.row : v.row + 1, 0];
+    const h = v.row > u.row ? ['H', v.row, 0] : ['F', v.row, 0];
     return [R, [g1, yu], [g1, h], [g2, h], [g2, yv], L];
   });
-  // Отрезки в одном зазоре (полосе), что делят хоть точку, — на разные дорожки; общая — только у входов в один шаг.
-  const lists = { G: {}, H: {} };
-  const sym = (r) => (r[0] === 'G' ? 2 * r[1] + 2 : r[0] === 'H' ? 2 * r[1] : r[0] === 'C' ? 2 * nodes[r[1]].col + 1 : 2 * nodes[r[1]].row + 1);
+  // Отрезки в одном зазоре (полосе) — на разные дорожки; общая — у входов в один шаг.
+  const lists = { G: {}, H: {}, F: {} };
+  const sym = (r) => (r[0] === 'G' ? 2 * r[1] + 2 : r[0] === 'H' ? 2 * r[1] : r[0] === 'F' ? 2 * r[1] + 1.5 : r[0] === 'C' ? 2 * nodes[r[1]].col + 1 : 2 * nodes[r[1]].row + 1);
   plans.forEach((pts, i) => pts.forEach((b, k) => {
     const a = pts[k - 1];
-    const j = a && (a[0] === b[0] && a[0][0] === 'G' ? 1 : a[1] === b[1] && a[1][0] === 'H' ? 0 : -1);
+    const j = a && (a[0] === b[0] && a[0][0] === 'G' ? 1 : a[1] === b[1] && /[HF]/.test(a[1][0]) ? 0 : -1);
     if (!(j >= 0)) return;
     const ref = a[1 - j];
     const p = sym(a[j]);
@@ -572,7 +570,7 @@ function pool(proc) {
     });
     return tr.length;
   };
-  // зазор, где кончается ветка с подписью, — шире подписи: она встаёт перед целью, правее всех вертикалей
+  // зазор перед целью ветки с подписью — шире подписи
   const lw = (e) => e.label.length * PG.cw + 4;
   const need = [];
   E.forEach((e, i) => {
@@ -587,7 +585,7 @@ function pool(proc) {
     colX[c] = x;
     const n = assign(lists.G[c]);
     const k = need[c] || 0;
-    gapX[c] = { l: x + w, w: Math.max(c < colW.length - 1 ? PG.gap : 20, 24 + (n - 1) * PG.tr, k && 12 + n * PG.tr + k), n, k };
+    gapX[c] = { l: x + w, w: Math.max(c < colW.length - 1 ? PG.gap : 20, 24 + (n - 1) * PG.tv, k && 12 + n * PG.tv + k), n, k };
     x += w + gapX[c].w;
   });
   const W = x;
@@ -602,15 +600,15 @@ function pool(proc) {
   });
   // имя роли — до двух строк поперёк дорожки
   lanes.forEach((l) => { rows[l.last].h += Math.max(0, Math.ceil((String(l.r.name).length / 2 + 2) * PG.cw + 16) - hOf(l)); });
-  const bandY = [];
+  const band = {};
   let y = 0;
+  const put = (b, k) => { const n = assign(lists[b][k]); band[b + k] = y; y += n ? 6 + n * PG.tr : 0; };
   rows.concat([null]).forEach((r, k) => {
-    const n = assign(lists.H[k]);
-    bandY[k] = y;
-    y += n ? 6 + n * PG.tr : 0;
+    put('H', k);
     if (!r) return;
     r.cy = y + PG.mTop + r.up;
     y += r.h;
+    put('F', k);
   });
   const H = y;
   Object.keys(nodes).forEach((id) => {
@@ -630,13 +628,12 @@ function pool(proc) {
   const X = (r) => {
     const n = nodes[r[1]];
     const g = gapX[r[1]];
-    return r[0] === 'G' ? g.l + (g.k ? 12 : Math.round((g.w - (g.n - 1) * PG.tr) / 2)) + r[2] * PG.tr : r[0] === 'R' ? n.cx + n.sw / 2 : r[0] === 'L' ? n.sx : n.cx;
+    return r[0] === 'G' ? g.l + (g.k ? 12 : Math.round((g.w - (g.n - 1) * PG.tv) / 2)) + r[2] * PG.tv : r[0] === 'R' ? n.cx + n.sw / 2 : r[0] === 'L' ? n.sx : n.cx;
   };
-  const Y = (r) => (r[0] === 'H' ? bandY[r[1]] + 6 + r[2] * PG.tr : r[0] === 'B' ? nodes[r[1]].bottom : nodes[r[1]].cy);
+  const Y = (r) => (/[HF]/.test(r[0]) ? band[r[0] + r[1]] + 6 + r[2] * PG.tr : r[0] === 'B' ? nodes[r[1]].bottom : nodes[r[1]].cy);
   const out = E.map((e, i) => Object.assign({}, e, { pts: simplify(plans[i].map((p) => [X(p[0]), Y(p[1])])) }));
 
-  // Подпись ветки — первое место у ребра без шагов, рёбер и других подписей: у прямой — у развилки, у ветки
-  // с поворотом — перед целью (выход из развилки у веток общий, последний отрезок — только её).
+  // Подпись ветки — первое свободное место: у прямой — у развилки, у ветки с поворотом — перед целью.
   const hit = (a, b, m) => a.x < b.x + b.w + m && b.x < a.x + a.w + m && a.y < b.y + b.h + m && b.y < a.y + a.h + m;
   const busy = [];
   Object.keys(nodes).forEach((id) => { const n = nodes[id]; busy.push({ x: n.sx, y: n.sy, w: n.sw, h: n.sh, m: 2 }, Object.assign({ m: 2 }, n.label || n.box)); });
@@ -663,12 +660,12 @@ function pool(proc) {
     busy.push(e.labBox = rect(q));
   });
   const laneOut = lanes.map((l, i) => {
-    const y0 = bandY[l.first];
-    const h = (i === lanes.length - 1 ? H : bandY[l.last + 1]) - y0;
+    const y0 = band['H' + l.first];
+    const h = (i === lanes.length - 1 ? H : band['H' + (l.last + 1)]) - y0;
     const ids = l.ids.slice().sort((a, b) => nodes[a].col - nodes[b].col || nodes[a].row - nodes[b].row);
     return { id: 'Lane_' + l.r.id, role: l.r.id, name: l.r.name, x: PG.head, y: y0, w: W - PG.head, h, ids, lines: wrap(l.r.name, Math.floor((h - 16) / PG.cw), 2) };
   });
-  return { pool: true, width: W, height: H, head: PG.head, nodes, edges: out, lanes: laneOut, titleLines: wrap(proc.title || 'Процесс', Math.floor((H - 16) / PG.cw), 2) };
+  return { pool: true, width: W, height: H, head: PG.head, nodes, edges: out, lanes: laneOut };
 }
 
 /* SVG-путь со скруглёнными углами. */
@@ -720,7 +717,7 @@ function rng(seed) {
   };
 }
 
-/* Сжатое время: схема за ~12 с. Точка — thin заявок, обслуживается в thin раз дольше: загрузка та же. */
+/* Сжатое время: точка — thin заявок, обслуживается в thin раз дольше. */
 function createSim(proc, res, lay, opts) {
   opts = opts || {};
   const A = res.A;
@@ -815,14 +812,15 @@ function createSim(proc, res, lay, opts) {
       const dots = [];
       const more = {};
       const queues = {};
-      const add = (x, y, kind) => { if (dots.length < maxDots) dots.push({ x, y, kind }); };
+      const add = (x, y, kind, e) => { if (dots.length < maxDots) dots.push({ x, y, kind, e }); };
       const perStep = {};
       Object.keys(queue).forEach((r) => queue[r].forEach((t) => { (perStep[t.step] || (perStep[t.step] = [])).push(t); }));
       Object.keys(perStep).forEach((sid) => {
         const n = lay.nodes[sid];
         queues[sid] = perStep[sid].length;
         if (!n) return;
-        perStep[sid].forEach((t, i) => { if (i < showQ) add(n.sx + 4 + i * 6.5, n.top - 7, 'queue'); });
+        // queue (красная) — у узкого места, иначе wait
+        perStep[sid].forEach((t, i) => { if (i < showQ) add(n.sx + 4 + i * 6.5, n.top - 7, res.steps[sid].level !== 'ok' ? 'queue' : 'wait'); });
         if (perStep[sid].length > showQ) more[sid] = perStep[sid].length - showQ;
       });
       const serving = {};
@@ -832,10 +830,15 @@ function createSim(proc, res, lay, opts) {
         const j = (serving[t.step] = (serving[t.step] || 0) + 1) - 1;
         if (n) add(n.kind === 'task' ? n.sx + n.sw - 8 - j * 7 : n.cx - j * 7, n.kind === 'task' ? n.sy + n.sh - 8 : n.cy, 'serve');
       });
+      // на ребре точки не ближе 12 px
+      const on = new Map();
       toks.forEach((t) => {
         if (t.st !== 'move') return;
         const p = along(t.edge.pts, (now - t.t0) / Math.max(1e-9, t.until - t.t0));
-        add(p[0], p[1], 'move');
+        const a = on.get(t.edge) || [];
+        if (a.some((q) => Math.hypot(q[0] - p[0], q[1] - p[1]) < 12)) return;
+        on.set(t.edge, a.concat([p]));
+        add(p[0], p[1], 'move', t.edge.e);
       });
       return { dots, more, queues };
     },

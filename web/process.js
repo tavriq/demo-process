@@ -60,7 +60,7 @@ const fmtDays = (d) => (isFinite(d) ? n1(d) : '> ' + E.OVER_DAYS);
 function mount(root, opts) {
   opts = Object.assign({ api: '/api/process/', examplesBase: null, first: 'sales', motion: true, mail: null, poll: 1000 }, opts);
   const mq = window.matchMedia ? matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
-  // от 900 px — пул BPMN с дорожками ролей (координаты те же, что в .bpmn), уже — схема сверху вниз
+  // от 900 px — пул BPMN (координаты .bpmn), уже — схема сверху вниз
   const wq = window.matchMedia ? matchMedia('(min-width: 900px)') : { matches: false };
   // ans — поля из ответов (null у примеров), A0 — допущения без правок, rep — id отчёта
   const st = { data: null, name: null, mode: 'before', A: E.assume(), A0: null, ans: null, edited: {}, rep: null, mins: {}, over: {}, sel: null, width: 0, shown: {}, ext: new Set() };
@@ -99,9 +99,13 @@ function mount(root, opts) {
   svg.setAttribute('hidden', '');
   title.textContent = 'Загружаю пример…';
   title.classList.add('pr-wait');
-  // слой заголовков дорожек: при прокрутке вбок закреплён слева (sticky)
+  // заголовки дорожек — закреплены слева (sticky)
   const hd = s('svg', { class: 'pr-hd', 'aria-hidden': 'true' });
   const wrap = h('div', { class: 'pr-wrap' }, [msg, h('div', { class: 'pr-stage' }, [hd, svg])]);
+  // у конца пула подсказка прокрутки гаснет
+  const fin = () => wrap.classList.toggle('pr-fin', wrap.scrollLeft + wrap.clientWidth >= wrap.scrollWidth - 2);
+  wrap.addEventListener('scroll', fin);
+  const dl0 = h('p', { class: 'pr-dl', 'aria-hidden': 'true' }, [h('i'), 'заявка в пути ·', h('i', { class: 'pr-q' }), 'ждёт у шага']);
   const nw = () => Math.round(Math.max(300, Math.min(520, wrap.clientWidth || 360)));
 
   const seg = h('div', { class: 'pr-seg', role: 'group', 'aria-label': 'Было или стало' });
@@ -162,9 +166,9 @@ function mount(root, opts) {
 
   const shade = h('div', { class: 'pr-shade', hidden: true, on: { click: closeSheet } });
   const sheet = h('div', { class: 'pr-sheet', hidden: true, role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Шаг процесса' });
-  // Пока первый пример не пришёл (и до переключения), блок держит высоту --pr-reserve: без сдвига макета.
+  // до первого примера блок держит высоту --pr-reserve
   root.classList.add('pr-first');
-  const body = h('div', { class: 'pr-body' }, [title, meta, legend, note, wrap]);
+  const body = h('div', { class: 'pr-body' }, [title, meta, legend, note, dl0, wrap]);
   root.append(exBar, top, body, bar, sum, rep, asm, ivSec, dl, shade, sheet);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !sheet.hidden) closeSheet(); });
 
@@ -272,11 +276,12 @@ function mount(root, opts) {
     st.width = st.wide ? 0 : W;
     const res = st.mode === 'before' ? calcB : calcA;
     lay = st.wide ? E.pool(cur) : E.layout(cur, { width: W });
-    svg.setAttribute('viewBox', '0 0 ' + lay.width + ' ' + lay.height);
-    svg.setAttribute('width', lay.width);
+    // пул — с x = head: полоса имени — только в .bpmn
+    const x0 = lay.head || 0;
+    svg.setAttribute('viewBox', x0 + ' 0 ' + (lay.width - x0) + ' ' + lay.height);
+    svg.setAttribute('width', lay.width - x0);
     svg.setAttribute('height', lay.height);
-    // ширина пула — блоку: фон и рамка по пулу (--pr-pw)
-    wrap.style.setProperty('--pr-w', st.wide ? lay.width + 'px' : '');
+    wrap.style.setProperty('--pr-w', st.wide ? lay.width - x0 + 'px' : '');
     drawLanes(res);
     gE.textContent = '';
     lay.edges.forEach((e) => {
@@ -314,6 +319,7 @@ function mount(root, opts) {
     sim = E.createSim(cur, res, lay, { seed: 11 });
     drawDots();
     kick();
+    fin();
     if (st.sel) fillSheet();
   }
 
@@ -324,7 +330,7 @@ function mount(root, opts) {
     g.setAttribute('aria-label', KIND[step.kind] + ': ' + step.name);
     const hot = info && info.level !== 'ok' && (step.kind === 'task' || step.kind === 'decision');
     if (hot) g.classList.add('pr-hot');
-    // в пуле текст 12 px: шаг строки 14, значок «авто» крупнее
+    // в пуле текст 12 px
     const lh = n.pool ? 14 : 12;
     const k = n.pool ? 1.2 : 1;
     const lines = (x, y0, cls, anchor) => {
@@ -339,10 +345,11 @@ function mount(root, opts) {
       const w = n.sw;
       const hh = n.sh;
       if (hot) s('rect', { x: -w / 2 - 3, y: -hh / 2 - 3, width: w + 6, height: hh + 6, rx: 12, class: 'pr-hotbg' }, g);
-      s('rect', { x: -w / 2, y: -hh / 2, width: w, height: hh, rx: 9, class: 'pr-box' }, g);
+      // пул: цвет роли — в рамке, текст по центру
       const ex = st.ext.has(step.role) && !step.auto;
-      s('rect', { x: -w / 2 + 4, y: -hh / 2 + 6, width: ex ? 5 : 3.5, height: hh - 12, rx: 1.75, class: ex ? 'pr-hatch' : 'pr-stripe', fill: ex ? 'url(#' + arrow + 'h)' : null }, g);
-      lines(-w / 2 + 13, 4 - ((n.lines.length - 1) * lh) / 2, 'pr-t');
+      s('rect', { x: -w / 2, y: -hh / 2, width: w, height: hh, rx: 9, class: 'pr-box' + (ex ? ' pr-bx' : '') }, g);
+      if (!n.pool) s('rect', { x: -w / 2 + 4, y: -hh / 2 + 6, width: ex ? 5 : 3.5, height: hh - 12, rx: 1.75, class: ex ? 'pr-hatch' : 'pr-stripe', fill: ex ? 'url(#' + arrow + 'h)' : null }, g);
+      lines(n.pool ? 0 : -w / 2 + 13, 4 - ((n.lines.length - 1) * lh) / 2, 'pr-t', n.pool && 'middle');
       if (step.auto) badge(n.pool ? 23 - w / 2 : w / 2 - 19, n.pool ? -hh / 2 - 4 : -hh / 2);
     } else {
       const r = n.sw / 2;
@@ -352,7 +359,7 @@ function mount(root, opts) {
         s('path', { d: 'M-5 -5L5 5M5 -5L-5 5', class: 'pr-gwx' }, g);
         if (step.auto) badge(n.pool ? 0 : -r - 21, n.pool ? -r - 10 : 0);
       } else {
-        s('circle', { r, class: 'pr-ev', 'stroke-width': n.kind === 'end' ? 3 : 1.8 }, g);
+        s('circle', { r, class: 'pr-ev pr-' + n.kind, 'stroke-width': n.kind === 'end' ? 3 : 1.8 }, g);
         if (n.kind === 'end') s('circle', { r: 5, class: 'pr-evd' }, g);
       }
       lines(n.pool ? n.tx : n.lx - n.cx, n.pool ? n.ty : 4 - ((n.lines.length - 1) * 12) / 2, 'pr-ts', n.ta);
@@ -364,21 +371,21 @@ function mount(root, opts) {
     }
   }
 
-  /* пул: рамка и дорожки — в схеме, полоса процесса и заголовки дорожек — в слое hd поверх неё; у перегруженной роли имя красное */
+  /* пул: рамка и дорожки — в схеме, заголовки — в слое hd; у перегруженной роли имя красное */
   function drawLanes(res) {
     gL.textContent = hd.textContent = '';
     if (!lay.pool) return;
-    const w = 2 * lay.head + 1;
-    hd.setAttribute('viewBox', '0 0 ' + w + ' ' + lay.height);
+    const x = lay.head;
+    const w = x + 1;
+    hd.setAttribute('viewBox', x + ' 0 ' + w + ' ' + lay.height);
     hd.setAttribute('width', w);
     hd.setAttribute('height', lay.height);
     const vtext = (x, y, ls, cls, g) => {
       const t = s('text', { class: cls, 'text-anchor': 'middle', transform: 'translate(' + x + ' ' + y + ') rotate(-90)' }, g);
       ls.forEach((l, i) => s('tspan', { x: 0, y: (i - (ls.length - 1) / 2) * 14 + 4, text: l }, t));
     };
-    s('rect', { width: w, height: lay.height, class: 'pr-hbk' }, hd);
-    [gL, hd].forEach((g) => s('rect', { x: 0.5, y: 0.5, width: lay.width - 1, height: lay.height - 1, class: 'pr-pool' }, g));
-    vtext(lay.head / 2, lay.height / 2, lay.titleLines, 'pr-pt', hd);
+    s('rect', { x, width: w, height: lay.height, class: 'pr-hbk' }, hd);
+    [gL, hd].forEach((g) => s('rect', { x: x + 0.5, y: 0.5, width: lay.width - w, height: lay.height - 1, rx: 6, class: 'pr-pool' }, g));
     lay.lanes.forEach((l) => {
       const R = res.roles[l.role];
       const ex = st.ext.has(l.role);
@@ -515,6 +522,7 @@ function mount(root, opts) {
     raf = requestAnimationFrame(frame);
   }
   function drawDots() {
+    dl0.hidden = !sim || reduced();
     const snap = sim && !reduced() ? sim.snapshot() : { dots: [], more: {} };
     dots.forEach((c, i) => {
       const d = snap.dots[i];
@@ -540,7 +548,7 @@ function mount(root, opts) {
   if (mq.addEventListener) mq.addEventListener('change', () => { drawDots(); kick(); });
   let rt = 0;
   // пул от ширины не зависит
-  const relayout = () => { clearTimeout(rt); rt = setTimeout(() => { if (cur && (wq.matches !== st.wide || (st.wide ? 0 : nw()) !== st.width)) render(); }, 150); };
+  const relayout = () => { clearTimeout(rt); rt = setTimeout(() => { fin(); if (cur && (wq.matches !== st.wide || (st.wide ? 0 : nw()) !== st.width)) render(); }, 150); };
   window.addEventListener('resize', relayout);
 
   /* ---------- панель шага ---------- */
@@ -724,7 +732,7 @@ function mount(root, opts) {
     msg.hidden = false;
     Object.keys(stat).forEach((k) => { cancelAnimationFrame(stat[k].raf); stat[k].val = null; stat[k].num.textContent = '—'; stat[k].diff.textContent = ''; });
     buildAsm();
-    // интервью — над схемой: ответил и видишь, как она растёт
+    // интервью — над схемой
     root.insertBefore(ivSec, body);
     clearTa();
     ask(r.question);

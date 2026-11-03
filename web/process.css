@@ -1,12 +1,18 @@
-/* demo-process · окно процесса. Цвета — только переменные сайта и цвета ролей --pr-r1…--pr-r6. */
+/* demo-process · окно процесса. Цвета — только переменные сайта и цвета ролей --pr-r1…--pr-r6.
+   --pr-ink2 — линии и подписи пула: --ink-2 сайта, на стенде без него — середина между --ink и --muted
+   (без color-mix — --ink). --pr-tint — доля цвета роли в заливке шага пула. */
 .pr {
   --pr-r1: #2f6fde; --pr-r2: #d9822b; --pr-r3: #8a5cf0; --pr-r4: #b38a00; --pr-r5: #d6456f; --pr-r6: #0e8fa8;
+  --pr-ink2: var(--ink-2, var(--ink)); --pr-tint: 12%;
   color: var(--ink); font: 15px/1.45 var(--sans); position: relative;
 }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .pr { --pr-r1: #73a3ff; --pr-r2: #f0a35e; --pr-r3: #ac8eff; --pr-r4: #e2bd45; --pr-r5: #f27d9d; --pr-r6: #4cc5db; }
+@supports (color: color-mix(in srgb, red, red)) {
+  .pr { --pr-ink2: var(--ink-2, color-mix(in srgb, var(--ink), var(--muted))); }
 }
-[data-theme="dark"] .pr { --pr-r1: #73a3ff; --pr-r2: #f0a35e; --pr-r3: #ac8eff; --pr-r4: #e2bd45; --pr-r5: #f27d9d; --pr-r6: #4cc5db; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .pr { --pr-r1: #73a3ff; --pr-r2: #f0a35e; --pr-r3: #ac8eff; --pr-r4: #e2bd45; --pr-r5: #f27d9d; --pr-r6: #4cc5db; --pr-tint: 20%; }
+}
+[data-theme="dark"] .pr { --pr-r1: #73a3ff; --pr-r2: #f0a35e; --pr-r3: #ac8eff; --pr-r4: #e2bd45; --pr-r5: #f27d9d; --pr-r6: #4cc5db; --pr-tint: 20%; }
 
 .pr *, .pr *::before, .pr *::after { box-sizing: border-box; }
 .pr [hidden] { display: none !important; }
@@ -39,6 +45,10 @@
 .pr-legend .pr-hot em, .pr-legend .pr-over em { color: var(--red); font-weight: 600; }
 .pr-note { font-size: 13px; margin: 0 0 4px; color: var(--muted); }
 .pr-note.pr-bad { color: var(--red); }
+/* легенда точек-заявок (только когда точки рисуются): очередь красная, лишь когда есть узкое место (.pr-note.pr-bad) */
+.pr-dl { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); margin: 0 0 6px; }
+.pr-dl i { width: 6px; height: 6px; border-radius: 50%; background: var(--ink); opacity: .72; flex: none; }
+.pr-bad + .pr-dl .pr-q { background: var(--red); opacity: .9; }
 
 /* схема */
 .pr-wrap { position: relative; margin: 4px 0 0; min-height: 200px; }
@@ -86,7 +96,7 @@
    выходя за карточку сайта, пул не пропускает её края, а при прокрутке рамка замыкает видимую часть. */
 .pr-wrap.pr-wide {
   --pr-pw: min(1400px, calc(100vw - 64px), var(--pr-w, 1400px)); width: var(--pr-pw); margin-left: calc((100% - var(--pr-pw)) / 2); overflow-x: auto;
-  background: var(--bg); outline: 1px solid var(--line-2); outline-offset: -1px;
+  background: var(--bg); outline: 1px solid var(--pr-ink2); outline-offset: -1px; border-radius: 7px;
 }
 .pr-wide .pr-stage { display: grid; width: max-content; margin: 0 auto; background: var(--bg); }
 .pr-wide .pr-stage > svg { grid-area: 1 / 1; }
@@ -100,7 +110,43 @@
 .pr-lh { fill: var(--c); fill-opacity: .1; stroke: var(--line-2); }
 .pr-lh.pr-lx { fill-opacity: .45; }
 .pr-lt { font-size: 12px; font-weight: 600; fill: var(--ink); }
-.pr-pt { font-size: 12px; fill: var(--muted); }
+/* Вид пула — как обложка «Процесса» на сайте: рамка пула и линии --pr-ink2, дорожки делит --line-2,
+   у заголовков дорожек заливки нет (рамка ячейки .pr-lh — вертикаль после подписей), у шага рамка цветом роли
+   (у внешней роли — пунктир --pr-ink2), старт — --ok, конец — толстый --ink. Только под .pr-wide: уже 900 px — как было. */
+.pr-wide .pr-pool { stroke: var(--pr-ink2); stroke-width: 1.2; }
+.pr-wide .pr-lh { fill: none; }
+.pr-wide .pr-lt { font-weight: 650; fill: var(--pr-ink2); }
+.pr-wide .pr-e { stroke: var(--pr-ink2); stroke-width: 1.3; stroke-linejoin: round; }
+.pr-wide .pr-arrow, .pr-wide .pr-arrow-b { fill: var(--pr-ink2); }
+.pr-wide .pr-ts { font-weight: 600; fill: var(--pr-ink2); }
+.pr-wide .pr-el { font-weight: 600; fill: var(--muted); }
+.pr-wide .pr-box { stroke: var(--c); stroke-width: 1.6; }
+.pr-wide .pr-box.pr-bx { stroke: var(--pr-ink2); stroke-dasharray: 5 3; fill: var(--soft); }
+.pr-wide .pr-t { font-weight: 650; fill: var(--ink); }
+.pr-wide .pr-ev { stroke: var(--ok); stroke-width: 1.6; }
+.pr-wide .pr-end { stroke: var(--ink); stroke-width: 3.2; }
+.pr-wide .pr-evd { display: none; }
+.pr-wide .pr-gw { stroke: var(--pr-ink2); stroke-width: 1.4; stroke-linejoin: round; }
+.pr-wide .pr-gwx { stroke: var(--pr-ink2); stroke-width: 1.8; }
+.pr-wide .pr-hot .pr-box, .pr-wide .pr-hot .pr-gw { stroke: var(--red); stroke-width: 1.8; }
+/* заливка шага — светлый (в тёмной теме — тёмный) тон цвета роли, сплошная: рёбра под шагом не видны; без color-mix — фон окна */
+@supports (fill: color-mix(in srgb, red, red)) {
+  .pr-wide .pr-box { fill: color-mix(in srgb, var(--c) var(--pr-tint), var(--bg)); }
+  .pr-wide .pr-hot .pr-box { fill: color-mix(in srgb, var(--red) var(--pr-tint), var(--bg)); }
+}
+/* пул шире блока: у правого края — узкое затемнение под фон (::before) и плашка «→ прокрутите» в нижнем углу (::after),
+   в отступе нижней дорожки: крайние шаги не закрыты; докрутили до конца (.pr-fin) — гаснут */
+.pr-wide .pr-stage::before {
+  content: ""; grid-area: 1 / 1; justify-self: end; position: sticky; right: 1px; z-index: 2; pointer-events: none;
+  width: 28px; background: linear-gradient(to right, transparent, var(--bg)); transition: opacity .3s, visibility .3s;
+  margin: 1px 0; border-radius: 0 6px 6px 0; /* внутри рамки пула: обводка блока остаётся видна */
+}
+.pr-wide .pr-stage::after {
+  content: "→ прокрутите"; grid-area: 1 / 1; justify-self: end; align-self: end; position: sticky; right: 8px; z-index: 2; pointer-events: none;
+  margin-bottom: 7px; padding: 3px 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg);
+  font-size: 12px; line-height: 1.2; font-weight: 600; color: var(--muted); transition: opacity .3s, visibility .3s;
+}
+.pr-wide.pr-fin .pr-stage::before, .pr-wide.pr-fin .pr-stage::after { opacity: 0; visibility: hidden; }
 .pr-lane.pr-hot .pr-lt { fill: var(--red); }
 
 /* счётчики */
