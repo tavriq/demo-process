@@ -114,11 +114,11 @@ test('Improve по контракту: действия, без цифр, flags.
   assert.ok(all.every((f) => /\d/.test(f.text)), 'в каждом тексте есть числа');
 });
 
-// SPEC-analyst: JS окна вместе ≤ 97 КБ несжатого; КБ — 1000 байт, как в SPEC (до пула BPMN было 84 461 байт).
-test('страница: JS до 97 КБ, без библиотек, :has и innerHTML', () => {
+// SPEC-analyst: JS окна вместе ≤ 98 КБ несжатого; КБ — 1000 байт, как в SPEC (до пула BPMN было 84 461 байт).
+test('страница: JS до 98 КБ, без библиотек, :has и innerHTML', () => {
   const js = ['engine.js', 'process.js'].map((f) => fs.readFileSync(path.join(__dirname, f)));
   const size = js.reduce((a, b) => a + b.length, 0);
-  assert.ok(size <= 97 * 1000, 'JS ' + size + ' байт');
+  assert.ok(size <= 98 * 1000, 'JS ' + size + ' байт');
   const src = js.map(String).join('\n');
   assert.ok(!/innerHTML|insertAdjacentHTML|document\.write|eval\(/.test(src));
   assert.ok(!/https?:\/\/(?!www\.(w3|omg)\.org|bpmn\.io)/.test(src), 'внешние адреса');

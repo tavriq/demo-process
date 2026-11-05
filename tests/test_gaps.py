@@ -59,14 +59,14 @@ def test_priorities_on_one_draft():
 
 
 def test_minutes_by_share_of_hours():
-    """Hand count on sales: the loops s4 -> s3 and s8 -> s6 take 0.2, so v(s3) = v(s4) = v(s6) = v(s7) = 1.25,
-    v(s8) = 0.25, v(s9) = v(s10) = 0.5. Minutes from the text: s2 10, s5 40, s9 60. Unknown, × the default:
-    s3 15 × 1.25 = 18.75, s6 18.75, s10 15 × 0.5 = 7.5, s4 (decision) 5 × 1.25 = 6.25, s8 15 × 0.25 = 3.75;
-    s7 is the client's: not asked."""
+    """Hand count on sales: the loops s4 -> s3 and s8 -> s6 take 0.2, «отказался» straight to the end 0.1, so
+    v(s3) = v(s4) = v(s6) = v(s7) = 1.25, v(s8) = 0.25, v(s9) = v(s10) = 0.7 × 1.25 = 0.875. Minutes from the
+    text: s2 10, s5 40, s9 60. Unknown, × the default: s3 15 × 1.25 = 18.75, s6 18.75, s10 15 × 0.875 = 13.125,
+    s4 (decision) 5 × 1.25 = 6.25, s8 15 × 0.25 = 3.75; s7 is the client's: not asked."""
     process = sales_process()
     v = gaps.visits(process)
     assert v["s3"] == pytest.approx(1.25) and v["s6"] == pytest.approx(1.25) and v["s8"] == pytest.approx(0.25)
-    assert v["s9"] == pytest.approx(0.5) and v["s11"] == pytest.approx(0.5) and v["s12"] == pytest.approx(0.4 * 1.25)
+    assert v["s9"] == pytest.approx(0.875) and v["s11"] == pytest.approx(0.875) and v["s12"] == pytest.approx(0.1 * 1.25)
     found = gaps.find_gaps(process, {})
     assert keys(found, "minutes") == ["s3.minutes", "s6.minutes", "s10.minutes", "s4.minutes", "s8.minutes"]
     # minutes from an answer: the step is known, its share moves the rest
@@ -76,7 +76,7 @@ def test_minutes_by_share_of_hours():
 
 def test_waiting_by_share_of_days():
     """Handoffs between roles into a step with no waiting from the text, × 4 h: s6 gets s5 -> s6 (1.0) and
-    s8 -> s6 (0.25) = 5, s7 gets s6 -> s7 (1.25) = 5, s9 0.5 × 4 = 2, s8 0.25 × 4 = 1; s5 and s10 have theirs."""
+    s8 -> s6 (0.25) = 5, s7 gets s6 -> s7 (1.25) = 5, s9 0.875 × 4 = 3.5, s8 0.25 × 4 = 1; s5 and s10 have theirs."""
     found = gaps.find_gaps(sales_process(), {})
     assert keys(found, "wait") == ["s6.wait_hours", "s7.wait_hours", "s9.wait_hours", "s8.wait_hours"]
     assert "«Сметчик» к «Менеджер»" in found[[g.key for g in found].index("s6.wait_hours")].about
@@ -84,11 +84,11 @@ def test_waiting_by_share_of_days():
 
 
 def test_people_by_load():
-    """Minutes a request gives each role: r1 10 + 18.75 + 6.25 + 18.75 = 53.75, r2 40, r4 60 × 0.5 = 30,
-    r5 7.5, r3 3.75; the client (r6) is not asked."""
+    """Minutes a request gives each role: r1 10 + 18.75 + 6.25 + 18.75 = 53.75, r4 60 × 0.875 = 52.5, r2 40,
+    r5 15 × 0.875 = 13.125, r3 3.75; the client (r6) is not asked."""
     found = gaps.find_gaps(sales_process(), {})
-    assert keys(found, "people") == ["r1.people", "r2.people", "r4.people", "r5.people", "r3.people"]
-    assert keys(gaps.find_gaps(sales_process(), {"people": {"r1": 3}}), "people")[0] == "r2.people"
+    assert keys(found, "people") == ["r1.people", "r4.people", "r2.people", "r5.people", "r3.people"]
+    assert keys(gaps.find_gaps(sales_process(), {"people": {"r1": 3}}), "people")[0] == "r4.people"
 
 
 def test_system_and_external_roles_are_not_asked_about_minutes_or_people():
@@ -143,6 +143,29 @@ def test_every_template_is_short_and_has_no_digits():
         assert len(question) <= 160 and gaps.digits_in(question) == 0 and g.about
 
 
+def approval_chain():
+    """web/engine.test.js chain(): the rework from the second approver goes back to the first (live 05.11)."""
+    return {"title": "Согласование", "roles": [{"id": "r1", "name": "Первый", "external": False},
+                                               {"id": "r2", "name": "Второй", "external": False}], "steps": [
+        {"id": "s1", "kind": "start", "name": "Отправить", "role": "r1", "next": ["s2"]},
+        {"id": "s2", "kind": "decision", "name": "Первый согласен?", "role": "r1",
+         "branches": [{"label": "да", "to": "s3"}, {"label": "нет", "to": "s6"}, {"label": "замечания", "to": "s7"}]},
+        {"id": "s3", "kind": "decision", "name": "Второй согласен?", "role": "r2",
+         "branches": [{"label": "да", "to": "s4"}, {"label": "нет", "to": "s6"}, {"label": "замечания", "to": "s7"}]},
+        {"id": "s4", "kind": "task", "name": "Подписать", "role": "r2", "next": ["s5"]},
+        {"id": "s5", "kind": "end", "name": "Подписан", "role": "r2", "next": []},
+        {"id": "s6", "kind": "end", "name": "Отказ", "role": "r1", "next": []},
+        {"id": "s7", "kind": "task", "name": "Поправить", "role": "r1", "next": ["s2"]}]}
+
+
+def test_a_loop_is_the_rework_branch_an_end_gets_a_tenth_as_engine_js():
+    shares = [(a, b, round(p, 9)) for a, b, p in gaps.edges(approval_chain()) if a in ("s2", "s3")]
+    assert shares == [("s2", "s3", 0.7), ("s2", "s6", 0.1), ("s2", "s7", 0.2),
+                      ("s3", "s4", 0.7), ("s3", "s6", 0.1), ("s3", "s7", 0.2)]
+    v = gaps.visits(approval_chain())
+    assert v["s2"] == pytest.approx(1 / 0.66) and v["s5"] == pytest.approx(0.49 / 0.66)
+
+
 # ---------- numbers from an answer ----------
 
 @pytest.mark.parametrize("field, text, value", [
@@ -163,6 +186,11 @@ def test_every_template_is_short_and_has_no_digits():
     # the period next to the number, not any period of the answer
     ("volume", "120 заявок в месяц, то есть около 6 в день", 120), ("volume", "100 заявок в месяц, в среднем 5 в день", 100),
     ("rate", "зарплата 50 тысяч, работают 8 часов в день", 298), ("rate", "50к в месяц", 298),
+    ("volume", "каждый день по 2", 42), ("volume", "в год около 180", 15),
+    # a unit is a whole word (live 05.11: «в сре-дн-ем 15 штук» lost the volume, the report counted 100)
+    ("volume", "в зависимости от количества проектов, но в среднем 15 штук", 15), ("volume", "сейчас 15 в месяц", 15),
+    ("volume", "15 частных заказов в месяц", 15), ("people", "в среднем 3 человека", 3),
+    ("people", "сейчас 4 менеджера", 4), ("minutes", "около часа", 60),
     # a range from one unit
     ("wait_hours", "день-два", 12), ("minutes", "час-два", 90), ("minutes", "час-полтора", 75),
     # a wait said next to the work: only the work is minutes

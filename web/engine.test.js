@@ -90,6 +90,52 @@ test('петля: ветка назад получает 0,2, проходы р�
   near(E.visits(p, { loopShare: 0.5 }).s3, 2);
 });
 
+/* Цепочка согласований: у каждого согласующего «да», «нет» (конец), «с замечаниями» → правка; правка от последнего
+   возвращает к первому (живой прогон 05.11). Петля — только ветка на правку, «да» первого — нет: раньше её путь
+   через последнего и правку возвращался к первому, она получала 0,2, отказ — 0,6, до подписи доходило 2,5 %.
+   Теперь петля 0,2, отказ сразу в конец 0,1, «да» — остальное. */
+const chain = () => ({ title: 'Согласование', roles: [{ id: 'r1', name: 'Первый' }, { id: 'r2', name: 'Второй' }], steps: [
+  { id: 's1', kind: 'start', name: 'Отправить', role: 'r1', next: ['s2'] },
+  { id: 's2', kind: 'decision', name: 'Первый согласен?', role: 'r1', branches: [{ label: 'да', to: 's3' }, { label: 'нет', to: 's6' }, { label: 'замечания', to: 's7' }] },
+  { id: 's3', kind: 'decision', name: 'Второй согласен?', role: 'r2', branches: [{ label: 'да', to: 's4' }, { label: 'нет', to: 's6' }, { label: 'замечания', to: 's7' }] },
+  { id: 's4', kind: 'task', name: 'Подписать', role: 'r2', next: ['s5'] },
+  { id: 's5', kind: 'end', name: 'Подписан', role: 'r2', next: [] },
+  { id: 's6', kind: 'end', name: 'Отказ', role: 'r1', next: [] },
+  { id: 's7', kind: 'task', name: 'Поправить', role: 'r1', next: ['s2'] },
+] });
+
+test('петля — ветка на правку, а не путь вперёд; отказ сразу в конец — 0,1', () => {
+  const p = chain();
+  const es = E.edges(p).filter((e) => e.from === 's2' || e.from === 's3');
+  assert.deepEqual(es.map((e) => [e.from, e.to, e.p, e.loop]), [
+    ['s2', 's3', 0.7, false], ['s2', 's6', 0.1, false], ['s2', 's7', 0.2, true],
+    ['s3', 's4', 0.7, false], ['s3', 's6', 0.1, false], ['s3', 's7', 0.2, true]]);
+  // v(s2) = 1 + 0,2·v(s2) + 0,2·v(s3), v(s3) = 0,7·v(s2)  ⇒  v(s2) = 1/0,66, до подписи v(s5) = 0,7·v(s3) = 0,49/0,66 ≈ 74 %
+  const v = E.visits(p);
+  near(v.s2, 1 / 0.66);
+  near(v.s5, 0.49 / 0.66);
+  // без ветки «да» отказ и петля делят по-старому: петля 0,2, конец — остальное
+  const two = chain();
+  two.steps[1].branches.shift();
+  assert.deepEqual(E.edges(two).filter((e) => e.from === 's2').map((e) => [e.to, e.p]), [['s6', 0.8], ['s7', 0.2]]);
+  // ветка на шаг выше — тоже петля, ветка в тупик (дальше неизвестно) — нет
+  p.steps[2].branches[2].to = 's2';
+  p.steps.find((s) => s.id === 's4').next = [];
+  const back = E.edges(p).filter((e) => e.from === 's3');
+  assert.deepEqual(back.map((e) => [e.to, e.loop]), [['s4', false], ['s6', false], ['s2', true]]);
+});
+
+test('«Стало»: ветка, у которой убрали шаг перед концом, сохраняет долю «Было»', () => {
+  const p = chain();
+  p.steps[1].branches[1].to = 's8';
+  p.steps.push({ id: 's8', kind: 'task', name: 'Сообщить об отказе', role: 'r1', next: ['s6'] });
+  const was = E.edges(p).find((e) => e.from === 's2' && e.to === 's8');
+  const now = E.edges(E.after(p, { changes: [{ step: 's8', action: 'remove', merge_into: null, how: '', risk: '' }] }))
+    .find((e) => e.from === 's2' && e.to === 's6');
+  near(was.p, 0.4);
+  near(now.p, 0.4);
+});
+
 test('решение с тремя ветками делит заявки поровну', () => {
   const p = fx('returns').process;
   const es = E.edges(p).filter((e) => e.from === 's3');

@@ -73,9 +73,11 @@ _PER = (("day", r"в\s+день|за\s+день|в\s+сутки|ежедневн
         ("quarter", r"в\s+квартал|за\s+квартал"),
         ("year", r"в\s+год|за\s+год|ежегодно"),
         ("hour", r"в\s+час|за\s+час|/\s*ч\b|/\s*час|час\s+работы|почасов"))
-_TIME = re.compile(r"^\s*(минут\w*|мин\.?|полчаса|час\w*|ч\.?(?!\w)|дн\w*|день|сут\w*|недел\w*|месяц\w*)",
+_TIME = re.compile(r"^\s*(минут\w*|мин\.?|полчаса|час(?:а|ов|у|ам|ами|ах|ик\w*)?(?!\w)|ч\.?(?!\w)|дн\w*|день|сут\w*|недел\w*|месяц\w*)",
                    re.IGNORECASE)
-_TIME_BEFORE = re.compile(r"(минут\w*|час\w*|дн\w*|день|сутки|недел\w*)\s*-?\s*$", re.IGNORECASE)
+# a whole word: «в сре-дн-ем 15», «сей-час 15», «15 час-тных» are not durations (live 05.11: «в среднем 15 штук»
+# lost the volume, the report counted 100 a month)
+_TIME_BEFORE = re.compile(r"(?<!\w)(минут\w*|час(?:а|ов|у|ам|ами|ах|ик\w*)?(?!\w)|дн\w*|день|сутки|недел\w*)\s*-?\s*$", re.IGNORECASE)
 # «день-два», «час-полтора»: a range from one unit
 _UNIT_RANGE = re.compile(r"(?<!\w)(минуту|час|день|сутки|неделю)\s*-\s*$", re.IGNORECASE)
 _MONEY = re.compile(r"^\s*(?:тыс\w*\s*)?(?:руб\w*|р\.|р(?!\w)|₽)", re.IGNORECASE)
@@ -86,7 +88,7 @@ _NOUNS = r"(?:заяв|заказ|клиент|обращен|сч[её]т|во�
 _COUNTED_AFTER = re.compile(rf"^\s*(?:[а-яё]+\s+){{0,2}}?{_NOUNS}", re.IGNORECASE)
 _COUNTED_BEFORE = re.compile(rf"{_NOUNS}[а-яё]*\s*$", re.IGNORECASE)
 # «за час», «час» — a duration; «в час», «в день» — a rate or a volume, not this
-_BARE_TIME = re.compile(r"(?<!\w)(?<!в\s)(полчаса|полтора\s+часа|час|минуту|день|сутки|неделю|полдня)(?!\w)",
+_BARE_TIME = re.compile(r"(?<!\w)(?<!в\s)(полчаса|полтора\s+часа|час|часа|минуту|день|сутки|неделю|полдня)(?!\w)",
                         re.IGNORECASE)
 
 # «через два дня», «смета ждёт ещё день»: a wait before a step, not the time of the work (live 12.10: an
@@ -197,8 +199,9 @@ def _counted(q: dict) -> bool:
 
 
 def _per_month(q: dict) -> float | None:
-    """A count as times a month by the period said next to it (none: a month); None for «в час»."""
-    per = _period(_clause(q["after"]))
+    """A count as times a month by the period said next to it — after it, else before it in the same
+    clause («каждый день по 2», «в год около 180»; none: a month); None for «в час»."""
+    per = _period(_clause(q["after"])) or _period(re.split(r"[,.;:!?()]|\d", q["before"])[-1])
     if per == "hour":
         return None
     return q["value"] * {"day": WORK_DAYS_PER_MONTH, "week": WEEKS_PER_MONTH, "quarter": 1 / 3,
@@ -258,7 +261,7 @@ def value_for(field: str, text: str) -> float | None:
             minutes = _duration(timed[0], default)
         elif bare:
             word = bare[1].lower()
-            minutes = {"полчаса": 30, "час": 60, "минуту": 1, "день": DAY_H * 60, "сутки": DAY_H * 60,
+            minutes = {"полчаса": 30, "час": 60, "часа": 60, "минуту": 1, "день": DAY_H * 60, "сутки": DAY_H * 60,
                        "неделю": WEEK_H * 60, "полдня": DAY_H * 30}.get(word, 90 if word.startswith("полтора") else None)
         elif len(plain) == 1:
             minutes = plain[0]["value"] * default

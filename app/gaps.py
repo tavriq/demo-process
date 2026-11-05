@@ -43,7 +43,7 @@ from app.checks import VAGUE_ROLE, cut, normalize
 
 # web/engine.js DEFAULTS
 DEFAULTS = {"perMonth": 100, "rate": 700, "hoursPerPerson": 120, "taskMin": 15, "decisionMin": 5, "handoffH": 4,
-            "loopShare": 0.2}
+            "loopShare": 0.2, "endShare": 0.1}
 ORDER = ("start_end", "volume", "role", "branches", "between", "rate", "minutes", "wait", "people")
 # what each kind asks for (app.understand), None — not a number
 FIELD = {"start_end": None, "volume": "volume", "role": None, "branches": None, "between": None, "rate": "rate",
@@ -99,34 +99,61 @@ def _outs(step: dict) -> list[str]:
     return list(step.get("next") or [])
 
 
-def _reach(by: dict, start: str) -> set[str]:
-    seen, todo = {start}, [start]
-    while todo:
-        s = by.get(todo.pop())
-        for t in _outs(s) if s else []:
-            if t in by and t not in seen:
-                seen.add(t)
-                todo.append(t)
-    return seen
+def _back(process: dict, by: dict) -> set[tuple[str, str]]:
+    """Back edges of a depth-first walk from the start, then from the steps not reached, in their order
+    (web/engine.js graph)."""
+    state: dict[str, int] = {}
+    back: set[tuple[str, str]] = set()
+
+    def go(sid: str) -> None:
+        state[sid] = 1
+        for t in _outs(by[sid]):
+            if t not in by:
+                continue
+            if state.get(t) == 1:
+                back.add((sid, t))
+            elif not state.get(t):
+                go(t)
+        state[sid] = 2
+
+    steps = process["steps"]
+    go(next((s["id"] for s in steps if s["kind"] == "start"), steps[0]["id"]))
+    for s in steps:
+        if not state.get(s["id"]):
+            go(s["id"])
+    return back
 
 
 def edges(process: dict) -> list[tuple[str, str, float]]:
-    """(from, to, share): a branch that loops back gets loopShare, the rest share what is left."""
+    """(from, to, share): a branch that loops back gets loopShare, a branch straight to an end endShare
+    (when there are other branches), the rest share what is left. A loop is a back edge or a branch that
+    does not reach an end without one (live 05.11: a rework from the last approver back to the first made
+    «согласовано» of the first a loop, 2.5 % reached the signature)."""
     by = {s["id"]: s for s in process["steps"]}
+    if not by:
+        return []
+    back = _back(process, by)
+
+    def fin(sid: str, seen: set) -> bool:
+        seen.add(sid)
+        targets = [t for t in _outs(by[sid]) if t in by]
+        return not targets or any((sid, t) not in back and t not in seen and fin(t, seen) for t in targets)
+
     out = []
     for s in process["steps"]:
         targets = [t for t in _outs(s) if t in by]
         if not targets or s["kind"] == "end":
             continue
-        loop = [s["kind"] == "decision" and s["id"] in _reach(by, t) for t in targets]
-        n_loop = sum(loop)
-        n_fwd = len(targets) - n_loop
-        split = n_loop and n_fwd and n_loop * DEFAULTS["loopShare"] < 1
-        for t, is_loop in zip(targets, loop):
-            if split:
-                p = DEFAULTS["loopShare"] if is_loop else (1 - n_loop * DEFAULTS["loopShare"]) / n_fwd
-            else:
-                p = 1 / len(targets)
+        # 1 — a loop, 2 — straight to an end, 0 — the rest; with no rest the ends are the rest
+        kind = [0 if s["kind"] != "decision" else 1 if (s["id"], t) in back or not fin(t, set())
+                else 2 if by[t]["kind"] == "end" else 0 for t in targets]
+        if 0 not in kind:
+            kind = [k & 1 for k in kind]
+        n = kind.count(0)
+        share = {1: DEFAULTS["loopShare"], 2: DEFAULTS["endShare"]}
+        fix = sum(share[k] for k in kind if k)
+        for t, k in zip(targets, kind):
+            p = (share[k] if k else (1 - fix) / n) if n and fix < 1 else 1 / len(targets)
             out.append((s["id"], t, p))
     return out
 

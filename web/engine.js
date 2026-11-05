@@ -7,7 +7,7 @@
 
 const DEFAULTS = {
   perMonth: 100, rate: 700, people: {}, hoursPerPerson: 120, taskMin: 15, decisionMin: 5,
-  handoffH: 4, loopShare: 0.2, autoFactor: 0.1, dayH: 8,
+  handoffH: 4, loopShare: 0.2, endShare: 0.1, autoFactor: 0.1, dayH: 8,
 };
 const SYS = 'sys';
 const SYS_NAME = 'Система';
@@ -60,35 +60,33 @@ const roleOf = (s) => (s.auto ? SYS : s.role);
 const externals = (proc) => new Set((proc.roles || []).filter((r) => r.external === true).map((r) => r.id));
 
 function outs(s) {
-  if (s.kind === 'decision') return (s.branches || []).map((b) => ({ to: b.to, label: b.label || '' }));
+  if (s.kind === 'decision') return (s.branches || []).map((b) => ({ to: b.to, label: b.label || '', mid: b.mid }));
   return (s.next || []).map((to) => ({ to, label: '' }));
 }
 
-function reach(by, from) {
-  const seen = new Set([from]);
-  const stack = [from];
-  while (stack.length) {
-    const s = by[stack.pop()];
-    if (s) outs(s).forEach((o) => { if (by[o.to] && !seen.has(o.to)) { seen.add(o.to); stack.push(o.to); } });
-  }
-  return seen;
-}
-
-/* Доли рёбер: ветка-петля — loopShare, прочие — поровну. */
+/* Доли веток: петля (ребро назад или без него не дойдёт до конца) — loopShare; сразу в конец, если есть другие, — endShare
+   (mid — в «Было» вела на шаг, его убрали); прочие — поровну. */
 function edges(proc, A) {
   A = assume(A);
   const by = index(proc);
+  const back = new Set(graph(proc).E.filter((e) => e.back).map((e) => e.from + '>' + e.to));
+  const fin = (id, seen) => {
+    const os = outs(by[id]).filter((o) => by[o.to]);
+    seen.add(id);
+    return !os.length || os.some((o) => !back.has(id + '>' + o.to) && !seen.has(o.to) && fin(o.to, seen));
+  };
   const out = [];
   proc.steps.forEach((s) => {
     const os = outs(s).filter((o) => by[o.to]);
     if (!os.length || s.kind === 'end') return;
-    const loop = os.map((o) => s.kind === 'decision' && reach(by, o.to).has(s.id));
-    const nLoop = loop.filter(Boolean).length;
-    const nFwd = os.length - nLoop;
-    const split = nLoop && nFwd && nLoop * A.loopShare < 1;
+    let k = os.map((o) => (s.kind !== 'decision' ? 0 : back.has(s.id + '>' + o.to) || !fin(o.to, new Set()) ? 1 : by[o.to].kind === 'end' && !o.mid ? 2 : 0));
+    if (!k.includes(0)) k = k.map((x) => x & 1);
+    const n = k.filter((x) => !x).length;
+    const sh = (x) => (x === 1 ? A.loopShare : A.endShare);
+    const fix = k.reduce((t, x) => t + (x && sh(x)), 0);
     os.forEach((o, i) => {
-      const p = split ? (loop[i] ? A.loopShare : (1 - nLoop * A.loopShare) / nFwd) : 1 / os.length;
-      out.push({ from: s.id, to: o.to, label: o.label, p, loop: loop[i] });
+      const p = n && fix < 1 ? (k[i] ? sh(k[i]) : (1 - fix) / n) : 1 / os.length;
+      out.push({ from: s.id, to: o.to, label: o.label, p, loop: k[i] === 1 });
     });
   });
   return out;
@@ -240,7 +238,7 @@ function after(proc, improve, overrides, assumptions) {
   const kept = steps.filter((s) => !gone[s.id]);
   kept.forEach((s) => {
     if (s.next) s.next = s.next.map(resolve).filter((t, i, a) => t && t !== s.id && a.indexOf(t) === i);
-    if (s.branches) s.branches = s.branches.map((b) => Object.assign(b, { to: resolve(b.to) })).filter((b) => b.to);
+    if (s.branches) s.branches = s.branches.map((b) => Object.assign(b, { to: resolve(b.to), mid: b.mid || (by[b.to] || b).kind !== 'end' })).filter((b) => b.to);
   });
   const roles = proc.roles.slice();
   if (kept.some((s) => s.auto)) roles.push({ id: SYS, name: SYS_NAME });
